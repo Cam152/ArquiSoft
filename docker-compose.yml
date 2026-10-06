@@ -1,0 +1,62 @@
+# Sistema de votación - Prototipo 1
+# Levantar todo:  docker compose up --build
+services:
+  # ---------- Datos ----------
+  elections-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${ELECTIONS_DB_USER:-elections}
+      POSTGRES_PASSWORD: ${ELECTIONS_DB_PASSWORD:-elections}
+      POSTGRES_DB: ${ELECTIONS_DB_NAME:-elections}
+    volumes:
+      - elections-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # ---------- Lógica ----------
+  election-service:
+    build: ./election-service
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${ELECTIONS_DB_USER:-elections}:${ELECTIONS_DB_PASSWORD:-elections}@elections-db:5432/${ELECTIONS_DB_NAME:-elections}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      SEED_DATA: ${SEED_DATA:-true}
+    ports:
+      - "8000:8000"
+    depends_on:
+      elections-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  # TODO (compañeros): descomentar y completar cuando estén listos
+  # voters-db:        # PostgreSQL (relacional) - votantes y marca "ya votó"
+  # voter-service:    # Java - login y POST /voters/mark-voted
+  # votes-db:         # MongoDB (NoSQL) - votos anónimos
+  # vote-service:     # Go - POST /votes y GET /results/{electionId}
+  #   debe llamar a http://election-service:8000/elections/{id} (campos is_open y candidates)
+
+  # ---------- Presentación ----------
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_ELECTION_API_URL: ${VITE_ELECTION_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:80"
+    depends_on:
+      election-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  elections-db-data:
