@@ -1,7 +1,11 @@
 # Sistema de votación - Prototipo 1
-# Levantar todo:  docker compose up --build
+# Levantar todo: docker compose up --build
+
 services:
-  # ---------- Datos ----------
+
+  # ============================================================
+  # DATOS - ELECCIONES
+  # ============================================================
   elections-db:
     image: postgres:16-alpine
     environment:
@@ -17,7 +21,10 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # ---------- Lógica ----------
+
+  # ============================================================
+  # LÓGICA - ELECTION SERVICE
+  # ============================================================
   election-service:
     build: ./election-service
     environment:
@@ -38,14 +45,57 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # TODO (compañeros): descomentar y completar cuando estén listos
-  # voters-db:        # PostgreSQL (relacional) - votantes y marca "ya votó"
-  # voter-service:    # Java - login y POST /voters/mark-voted
-  # votes-db:         # MongoDB (NoSQL) - votos anónimos
-  # vote-service:     # Go - POST /votes y GET /results/{electionId}
-  #   debe llamar a http://election-service:8000/elections/{id} (campos is_open y candidates)
 
-  # ---------- Presentación ----------
+  # ============================================================
+  # DATOS - VOTANTES
+  # ============================================================
+  voters-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${VOTERS_DB_USER:-voters}
+      POSTGRES_PASSWORD: ${VOTERS_DB_PASSWORD:-voters}
+      POSTGRES_DB: ${VOTERS_DB_NAME:-voters}
+    ports:
+      - "5432:5432"
+    volumes:
+      - voters-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+
+  # ============================================================
+  # LÓGICA - VOTER SERVICE
+  # ============================================================
+  voter-service:
+    build: ./voter-service
+    environment:
+      DB_URL: jdbc:postgresql://voters-db:5432/${VOTERS_DB_NAME:-voters}
+      DB_USER: ${VOTERS_DB_USER:-voters}
+      DB_PASSWORD: ${VOTERS_DB_PASSWORD:-voters}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-0123456789abcdef}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "8001:8001"
+    depends_on:
+      voters-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+
+  # ============================================================
+  # PRESENTACIÓN - FRONTEND
+  # ============================================================
   frontend:
     build:
       context: ./frontend
@@ -58,5 +108,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+
+# ==============================================================
+# VOLÚMENES
+# ==============================================================
 volumes:
   elections-db-data:
+  voters-db-data:
+  votes-db-data:
