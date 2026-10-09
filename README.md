@@ -26,13 +26,13 @@ Aquí está lo que ya funciona, cómo funciona, y lo que falta con el detalle ne
 
 | Componente | Lenguaje y herramientas | Estado | Responsable |
 |---|---|---|---|
-| Front-end web | TypeScript, React, Vite, nginx | Básico: lista elecciones | ______ |
-| Election Service | Python, FastAPI, SQLAlchemy, Strawberry | Completo | David |
-| Elections DB | PostgreSQL | Completa | David |
-| Voter Service | Java, Spring Boot | Pendiente | ______ |
-| Voters DB | PostgreSQL | Pendiente | ______ |
-| Vote Service | Go, net/http, driver de MongoDB | Completo (falta integrarlo con el Voter Service) | Sebastián |
-| Votes DB | MongoDB | Completa | Sebastián |
+| Front-end web | TypeScript, React, Vite, nginx | Básico: lista elecciones | Cristian |
+| Election Service | Python, FastAPI, SQLAlchemy, Strawberry | Completo | David Benjumea |
+| Elections DB | PostgreSQL | Completa | David Benjumea |
+| Voter Service | Java, Spring Boot | Pendiente | Esteban y Camilo |
+| Voters DB | PostgreSQL | Pendiente | Esteban y Camilo |
+| Vote Service | Go, net/http, driver de MongoDB | Completo (falta integrarlo con el Voter Service) | Maicol y Miguel |
+| Votes DB | MongoDB | Completa | Maicol y Miguel |
 
 Lo que se puede hacer hoy: ver las elecciones con su estado y candidatos en el front-end, y administrarlas
 (crear, editar, abrir, cerrar) desde Swagger, y consultar resultados en el Vote Service. Lo que todavía no
