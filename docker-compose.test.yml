@@ -1,0 +1,44 @@
+# Pruebas de punta a punta del Vote Service. Se usa encima de docker-compose.yml:
+#   ./vote-service/e2e/run.sh
+# Agrega un Voter Service simulado y el contenedor que ejecuta las pruebas, y quita
+# los puertos publicados para no chocar con el sistema si ya está corriendo.
+services:
+  mock-voter-service:
+    build:
+      context: ./vote-service
+      dockerfile: e2e/mock-voter/Dockerfile
+    environment:
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8001/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  election-service:
+    ports: !reset []
+
+  vote-service:
+    ports: !reset []
+    environment:
+      VOTER_SERVICE_URL: http://mock-voter-service:8001
+    depends_on:
+      mock-voter-service:
+        condition: service_healthy
+
+  e2e:
+    image: golang:1.23-alpine
+    working_dir: /src
+    volumes:
+      - ./vote-service:/src:ro
+    environment:
+      VOTE_SERVICE_URL: http://vote-service:8002
+      ELECTION_SERVICE_URL: http://election-service:8000
+      MONGO_URI: mongodb://votes-db:27017
+      MONGO_DB: ${MONGO_DB:-votes}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      GOFLAGS: -buildvcs=false
+    command: ["go", "test", "-tags=e2e", "-count=1", "-v", "./e2e/"]
+    depends_on:
+      vote-service:
+        condition: service_healthy

@@ -31,11 +31,13 @@ Aquí está lo que ya funciona, cómo funciona, y lo que falta con el detalle ne
 | Elections DB | PostgreSQL | Completa | David |
 | Voter Service | Java, Spring Boot | Pendiente | ______ |
 | Voters DB | PostgreSQL | Pendiente | ______ |
-| Vote Service | Go | Pendiente | ______ |
-| Votes DB | MongoDB | Pendiente | ______ |
+| Vote Service | Go, net/http, driver de MongoDB | Completo (falta integrarlo con el Voter Service) | Sebastián |
+| Votes DB | MongoDB | Completa | Sebastián |
 
 Lo que se puede hacer hoy: ver las elecciones con su estado y candidatos en el front-end, y administrarlas
-(crear, editar, abrir, cerrar) desde Swagger. Lo que todavía no se puede: iniciar sesión, votar y ver resultados.
+(crear, editar, abrir, cerrar) desde Swagger, y consultar resultados en el Vote Service. Lo que todavía no
+se puede: iniciar sesión y votar de punta a punta (el Vote Service ya está, pero necesita al Voter Service
+para marcar al votante; mientras no exista, `POST /votes` responde `502`).
 
 
 ## 2. Arquitectura
@@ -89,7 +91,9 @@ docker compose up --build
 | Front-end | http://localhost:3000 |
 | Election Service, Swagger (REST) | http://localhost:8000/docs |
 | Election Service, GraphiQL (GraphQL) | http://localhost:8000/graphql |
-| Health check | http://localhost:8000/health |
+| Election Service, health check | http://localhost:8000/health |
+| Vote Service, health check | http://localhost:8002/health |
+| Vote Service, resultados de la elección 1 | http://localhost:8002/results/1 |
 
 Detener: `docker compose down`. Detener y borrar los datos: `docker compose down -v`
 (útil para volver a cargar los datos de ejemplo).
@@ -200,13 +204,113 @@ Está en `frontend/`.
 - El navegador llama directo al servicio, así que el Election Service permite ese origen con CORS
   (`CORS_ORIGINS`, por defecto `http://localhost:3000`).
 
-### 4.4 Docker Compose
+### 4.4 Vote Service (Go)
 
-`docker-compose.yml` define hoy tres contenedores: `elections-db`, `election-service` y `frontend`.
+Recibe el voto, lo valida con los otros dos servicios, guarda el voto anónimo y calcula resultados.
+Está en `vote-service/` y escucha en el puerto 8002. Es el único dueño de la Votes DB.
+
+**Archivos:**
+
+| Archivo | Responsabilidad |
+|---|---|
+| `main.go` | Arranque: configuración, conexión a MongoDB, servidor HTTP y apagado ordenado |
+| `handlers.go` | Rutas (`net/http`), `POST /votes`, `GET /results/{election_id}`, `/health` y el middleware de CORS |
+| `clients.go` | Conector REST hacia el Election Service y el Voter Service (timeout de 5 segundos) |
+| `store.go` | Conector a MongoDB: colecciones `votes` y `audit`, índice y agregación de resultados |
+| `config.go` | Lee la configuración de variables de entorno |
+| `handlers_test.go` | Pruebas con MongoDB y los otros servicios simulados |
+| `Dockerfile` | Compila el binario en `golang:1.23-alpine` y lo ejecuta en `alpine:3.20` |
+
+**Cómo arranca:** espera a que MongoDB responda (reintenta hasta 30 veces), crea el índice
+`{election_id: 1, candidate_id: 1}` sobre `votes` y empieza a escuchar.
+
+**Endpoints** (contrato completo en la sección 6.2):
+
+| Método y ruta | Descripción |
+|---|---|
+| `GET /health` | `200 {"status": "ok"}` |
+| `POST /votes` | Registra un voto. Requiere `Authorization: Bearer <jwt>` |
+| `GET /results/{election_id}` | Conteo y porcentaje por candidato (público) |
+
+**Orden de `POST /votes`** (el orden importa, ver sección 7):
+
+1. Valida el cuerpo (`election_id` y `candidate_id` enteros) y que venga el header `Authorization`.
+2. `GET {ELECTION_SERVICE_URL}/elections/{id}`: si no existe, 404; si `is_open` es falso, 409; si el candidato
+   no está en `candidates`, 422. Se hace antes de marcar para no dejar votantes marcados por una elección cerrada.
+3. `POST {VOTER_SERVICE_URL}/voters/mark-voted` reenviando el `Authorization` del cliente y agregando
+   `X-Service-Key`. Si responde 401 o 409, se devuelve lo mismo al cliente.
+4. Inserta el voto en `votes`, con `candidate_name` tomado de la respuesta del paso 2.
+5. Si el paso 4 falla, llama a `POST /voters/unmark-voted` (compensación) y responde 500.
+6. Registra el evento en `audit`. Si falla, solo queda en el log; no se deshace el voto.
+7. Responde `201 {"status": "recorded"}`.
+
+Si el Election Service o el Voter Service no responden, devuelve `502`.
+
+**Resultados:** una agregación `$group` por `candidate_id` cuenta los votos. Luego se completa con la lista
+de candidatos de `GET /elections/{id}` para que aparezcan los que tienen 0 votos, se calcula el porcentaje
+(2 decimales) y se ordena de más a menos votos.
+
+**Cómo ejecutarlo:**
+
+```bash
+# Con todo el sistema (desde la raíz del repositorio)
+docker compose up --build
+
+# Solo el Vote Service y lo que necesita (votes-db, election-service y elections-db)
+docker compose up --build vote-service
+
+# Ver sus logs
+docker compose logs -f vote-service
+```
+
+**Cómo probarlo:**
+
+```bash
+curl http://localhost:8002/health
+curl http://localhost:8002/results/1
+
+# Votar (el token sale de POST /auth/login del Voter Service)
+curl -i -X POST http://localhost:8002/votes \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"election_id": 1, "candidate_id": 2}'
+
+# Ver los votos guardados (no llevan datos del votante)
+docker compose exec votes-db mongosh votes --eval "db.votes.find()"
+```
+
+Mientras el Voter Service no exista, `POST /votes` valida la elección y el candidato (404, 409, 422) y
+al llegar al paso 3 responde `502 {"detail": "El Voter Service no responde"}`.
+
+**Pruebas:** no hace falta instalar Go, se corren en un contenedor. Desde `vote-service/`:
+
+```bash
+docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine go test ./...
+```
+
+Con Go 1.23 o superior instalado basta `go test ./...`. Las pruebas simulan MongoDB, el Election Service
+y el Voter Service, así que no necesitan el compose. Si cambian dependencias, corran `go mod tidy` (igual,
+en el contenedor) y suban `go.mod` y `go.sum`.
+
+### 4.5 Votes DB (MongoDB)
+
+Base `votes` con dos colecciones. Los datos persisten en el volumen `votes-db-data`. No se publica ningún
+puerto: solo el Vote Service la ve, por la red de Compose.
+
+- `votes`: `{election_id, candidate_id, candidate_name, cast_at}`. No lleva nada del votante. `cast_at` se
+  redondea a la hora para que no se pueda cruzar con el momento exacto en que alguien fue marcado.
+- `audit`: eventos `{type: "vote_registered", election_id, at}`. Tampoco lleva datos del votante, y `at` se
+  redondea igual que `cast_at`.
+
+### 4.6 Docker Compose
+
+`docker-compose.yml` define hoy cinco contenedores: `elections-db`, `election-service`, `votes-db`,
+`vote-service` y `frontend`.
 
 - `depends_on` con `condition: service_healthy`: el servicio espera a que su base de datos esté sana
   y el front-end espera al Election Service.
-- Cada servicio tiene `healthcheck` (PostgreSQL con `pg_isready`, el Election Service consultando `/health`).
+- Cada servicio tiene `healthcheck` (PostgreSQL con `pg_isready`, MongoDB con `mongosh`, el Election Service
+  y el Vote Service consultando `/health`).
 - Dentro de la red de Compose los contenedores se llaman por el nombre del servicio y el puerto interno
   (por ejemplo `http://election-service:8000`). Desde el navegador se usa `localhost` y el puerto publicado.
   Es la confusión más común: servicio a servicio usa el nombre del contenedor, el front-end usa `localhost`.
@@ -220,9 +324,9 @@ paralelo (5.2 y 5.3) y al final el front-end (5.4) y la integración.
 
 Cada servicio nuevo debe empezar con: carpeta propia, `Dockerfile`, endpoint `GET /health` que responda
 `200 {"status": "ok"}`, y su entrada en `docker-compose.yml`. Con eso `docker compose up --build` ya levanta
-los 7 contenedores y cada quien trabaja sin bloquear a los demás.
+los 7 contenedores (hoy levanta 5) y cada quien trabaja sin bloquear a los demás.
 
-Bloques para pegar en `docker-compose.yml` (dentro de `services:`):
+Bloques que faltan por pegar en `docker-compose.yml` (dentro de `services:`):
 
 ```yaml
   voters-db:
@@ -261,53 +365,12 @@ Bloques para pegar en `docker-compose.yml` (dentro de `services:`):
       retries: 6
       start_period: 30s
     restart: unless-stopped
-
-  votes-db:
-    image: mongo:7
-    volumes:
-      - votes-db-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  vote-service:
-    build: ./vote-service
-    environment:
-      MONGO_URI: mongodb://votes-db:27017
-      MONGO_DB: votes
-      ELECTION_SERVICE_URL: http://election-service:8000
-      VOTER_SERVICE_URL: http://voter-service:8001
-      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    ports:
-      - "8002:8002"
-    depends_on:
-      votes-db:
-        condition: service_healthy
-      election-service:
-        condition: service_healthy
-      voter-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8002/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 15s
-    restart: unless-stopped
 ```
 
-Y al final del archivo, en `volumes:`:
+Y al final del archivo, en `volumes:`, agregar `voters-db-data:`.
 
-```yaml
-volumes:
-  elections-db-data:
-  voters-db-data:
-  votes-db-data:
-```
+`votes-db` y `vote-service` ya están en el compose. Cuando exista el `voter-service`, agregarlo al
+`depends_on` del `vote-service` (con `condition: service_healthy`), donde hoy hay un `TODO`.
 
 El servicio `frontend` también debe esperar a los nuevos servicios y recibir sus URLs (ver 5.4).
 Las imágenes `eclipse-temurin:21-jre-alpine` y `alpine` traen `wget`, que usan los healthchecks.
@@ -376,61 +439,8 @@ para que cree la tabla.
 
 ### 5.3 Vote Service (Go) - puerto 8002
 
-**Qué hace:** recibe el voto, valida con los otros dos servicios, guarda el voto anónimo y calcula
-resultados. Es el único dueño de la Votes DB.
-
-**Herramientas sugeridas:** `net/http` de la librería estándar (Go 1.22 permite rutas con método, por ejemplo
-`mux.HandleFunc("POST /votes", ...)`) y el driver oficial de MongoDB (`go.mongodb.org/mongo-driver`).
-Para llamar a los otros servicios basta `net/http` con un cliente con timeout (por ejemplo 5 segundos).
-
-**Datos:** dos colecciones en MongoDB.
-
-- `votes`: `{election_id, candidate_id, candidate_name, cast_at}`. No lleva nada del votante. `cast_at` se
-  redondea a la hora para que no se pueda cruzar con el momento exacto en que alguien fue marcado.
-  Crear un índice sobre `{election_id: 1, candidate_id: 1}`.
-- `audit`: eventos como `{type: "vote_registered", election_id, at}`. Tampoco lleva datos del votante.
-
-**Endpoints** (detalle en la sección 6.2): `POST /votes`, `GET /results/{election_id}` y `GET /health`.
-
-**Orden de `POST /votes`** (el orden importa):
-
-1. Validar el cuerpo (`election_id` y `candidate_id` enteros).
-2. `GET {ELECTION_SERVICE_URL}/elections/{id}`: si no existe, 404; si `is_open` es falso, 409; si el candidato
-   no está en `candidates`, 422. Hacerlo antes de marcar evita dejar votantes marcados por una elección cerrada.
-3. `POST {VOTER_SERVICE_URL}/voters/mark-voted` reenviando el header `Authorization` del cliente y agregando
-   `X-Service-Key`. Si responde 401 o 409, devolver lo mismo al cliente.
-4. Insertar el voto en `votes`, con `candidate_name` tomado de la respuesta del paso 2.
-5. Si el paso 4 falla, llamar a `POST /voters/unmark-voted` (compensación) y responder 500.
-6. Registrar el evento en `audit`. Si falla, solo se registra en el log; no se deshace el voto.
-7. Responder `201 {"status": "recorded"}`.
-
-Si el Election Service o el Voter Service no responden, devolver `502`.
-
-**Resultados:** una agregación `$group` por `candidate_id` que cuenta los votos. Luego se completa con la
-lista de candidatos de `GET /elections/{id}` para que también aparezcan los que tienen 0 votos, y se calcula
-el porcentaje.
-
-**CORS:** responder a `OPTIONS` y permitir el origen `CORS_ORIGINS` con los headers `Authorization` y
-`Content-Type`. En Go hay que escribir un middleware pequeño; es lo que más se olvida y se nota
-cuando el navegador bloquea la petición.
-
-**Dockerfile sugerido:**
-
-```dockerfile
-FROM golang:1.23-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /vote-service .
-
-FROM alpine:3.20
-COPY --from=build /vote-service /vote-service
-EXPOSE 8002
-CMD ["/vote-service"]
-```
-
-Antes de construir la imagen, correr `go mod tidy` para generar `go.sum` y subirlo al repositorio.
+Implementado, ver la sección 4.4. Falta la integración con el Voter Service: agregarlo a su `depends_on`
+en el compose y repetir la prueba con un token real.
 
 **Listo cuando:** un voto válido responde 201 y aparece en MongoDB sin datos del votante; el mismo votante
 recibe 409 al repetir; una elección cerrada responde 409; y `GET /results/1` devuelve el conteo.
@@ -678,6 +688,9 @@ Son decisiones de prototipo; conviene mencionarlas como trabajo futuro en la pre
 ├── frontend/            (TypeScript, React)     básico
 │   ├── Dockerfile
 │   └── src/
-├── voter-service/       (Java, Spring Boot)     pendiente
-└── vote-service/        (Go)                    pendiente
+├── vote-service/        (Go)                    completo
+│   ├── Dockerfile
+│   ├── go.mod, go.sum
+│   └── *.go
+└── voter-service/       (Java, Spring Boot)     pendiente
 ```
