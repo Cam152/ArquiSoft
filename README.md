@@ -29,15 +29,15 @@ Aquí está lo que ya funciona, cómo funciona, y lo que falta con el detalle ne
 | Front-end web | TypeScript, React, Vite, nginx | Básico: lista elecciones | Cristian |
 | Election Service | Python, FastAPI, SQLAlchemy, Strawberry | Completo | David Benjumea |
 | Elections DB | PostgreSQL | Completa | David Benjumea |
-| Voter Service | Java, Spring Boot | Pendiente | Esteban y Camilo |
-| Voters DB | PostgreSQL | Pendiente | Esteban y Camilo |
-| Vote Service | Go, net/http, driver de MongoDB | Completo (falta integrarlo con el Voter Service) | Maicol y Miguel |
+| Voter Service | Java, Spring Boot | Completo | Esteban y Camilo |
+| Voters DB | PostgreSQL | Completa | Esteban y Camilo |
+| Vote Service | Go, net/http, driver de MongoDB | Completo | Maicol y Miguel |
 | Votes DB | MongoDB | Completa | Maicol y Miguel |
 
-Lo que se puede hacer hoy: ver las elecciones con su estado y candidatos en el front-end, y administrarlas
-(crear, editar, abrir, cerrar) desde Swagger, y consultar resultados en el Vote Service. Lo que todavía no
-se puede: iniciar sesión y votar de punta a punta (el Vote Service ya está, pero necesita al Voter Service
-para marcar al votante; mientras no exista, `POST /votes` responde `502`).
+Lo que se puede hacer hoy: ver las elecciones con su estado y candidatos en el front-end, administrarlas
+(crear, editar, abrir, cerrar) desde Swagger, e iniciar sesión, votar y consultar resultados por la API
+(Voter Service y Vote Service). Lo que todavía no se puede: iniciar sesión, votar y ver resultados desde el
+front-end.
 
 
 ## 2. Arquitectura
@@ -92,6 +92,7 @@ docker compose up --build
 | Election Service, Swagger (REST) | http://localhost:8000/docs |
 | Election Service, GraphiQL (GraphQL) | http://localhost:8000/graphql |
 | Election Service, health check | http://localhost:8000/health |
+| Voter Service, health check | http://localhost:8001/health |
 | Vote Service, health check | http://localhost:8002/health |
 | Vote Service, resultados de la elección 1 | http://localhost:8002/results/1 |
 
@@ -279,8 +280,10 @@ curl -i -X POST http://localhost:8002/votes \
 docker compose exec votes-db mongosh votes --eval "db.votes.find()"
 ```
 
-Mientras el Voter Service no exista, `POST /votes` valida la elección y el candidato (404, 409, 422) y
-al llegar al paso 3 responde `502 {"detail": "El Voter Service no responde"}`.
+El token se obtiene con `POST http://localhost:8001/auth/login` y el cuerpo
+`{"document": "1000000001", "password": "voter123"}` (hay cinco votantes de prueba, del `1000000001` al
+`1000000005`). Si el Voter Service no está arriba, `POST /votes` responde
+`502 {"detail": "El Voter Service no responde"}`.
 
 **Pruebas:** no hace falta instalar Go, se corren en un contenedor. Desde `vote-service/`:
 
@@ -304,8 +307,8 @@ puerto: solo el Vote Service la ve, por la red de Compose.
 
 ### 4.6 Docker Compose
 
-`docker-compose.yml` define hoy cinco contenedores: `elections-db`, `election-service`, `votes-db`,
-`vote-service` y `frontend`.
+`docker-compose.yml` define hoy los siete contenedores: `elections-db`, `election-service`, `voters-db`,
+`voter-service`, `votes-db`, `vote-service` y `frontend`.
 
 - `depends_on` con `condition: service_healthy`: el servicio espera a que su base de datos esté sana
   y el front-end espera al Election Service.
@@ -324,7 +327,7 @@ paralelo (5.2 y 5.3) y al final el front-end (5.4) y la integración.
 
 Cada servicio nuevo debe empezar con: carpeta propia, `Dockerfile`, endpoint `GET /health` que responda
 `200 {"status": "ok"}`, y su entrada en `docker-compose.yml`. Con eso `docker compose up --build` ya levanta
-los 7 contenedores (hoy levanta 5) y cada quien trabaja sin bloquear a los demás.
+los 7 contenedores (hoy ya los levanta) y cada quien trabaja sin bloquear a los demás.
 
 Bloques que faltan por pegar en `docker-compose.yml` (dentro de `services:`):
 
@@ -439,8 +442,8 @@ para que cree la tabla.
 
 ### 5.3 Vote Service (Go) - puerto 8002
 
-Implementado, ver la sección 4.4. Falta la integración con el Voter Service: agregarlo a su `depends_on`
-en el compose y repetir la prueba con un token real.
+Implementado, ver la sección 4.4. Ya se probó con el Voter Service real y un token de `POST /auth/login`.
+Falta agregar el `voter-service` a su `depends_on` en el compose.
 
 **Listo cuando:** un voto válido responde 201 y aparece en MongoDB sin datos del votante; el mismo votante
 recibe 409 al repetir; una elección cerrada responde 409; y `GET /results/1` devuelve el conteo.
@@ -692,5 +695,5 @@ Son decisiones de prototipo; conviene mencionarlas como trabajo futuro en la pre
 │   ├── Dockerfile
 │   ├── go.mod, go.sum
 │   └── *.go
-└── voter-service/       (Java, Spring Boot)     pendiente
+└── voter-service/       (Java, Spring Boot)     completo
 ```

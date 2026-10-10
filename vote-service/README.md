@@ -110,8 +110,10 @@ curl -i -X POST http://localhost:8002/votes \
 docker compose exec votes-db mongosh votes --eval "db.votes.find()"
 ```
 
-Mientras el Voter Service no exista, `POST /votes` valida la elección y el candidato (404, 409, 422) y
-al llegar al paso 3 responde `502 {"detail": "El Voter Service no responde"}`.
+El token se obtiene con `POST http://localhost:8001/auth/login` y el cuerpo
+`{"document": "1000000001", "password": "voter123"}` (hay cinco votantes de prueba, del `1000000001` al
+`1000000005`). Si el Voter Service no está arriba, `POST /votes` responde
+`502 {"detail": "El Voter Service no responde"}`.
 
 En Windows PowerShell usen `curl.exe` en lugar de `curl`.
 
