@@ -135,7 +135,8 @@ services:
         condition: service_healthy
       election-service:
         condition: service_healthy
-      # TODO: agregar voter-service (condition: service_healthy) cuando exista
+      # No espera al voter-service: solo lo llama al recibir un voto y responde 502 si no está.
+      # (Así también funcionan las pruebas de punta a punta, que lo reemplazan por un simulado.)
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8002/health"]
       interval: 10s
@@ -154,10 +155,16 @@ services:
       context: ./frontend
       args:
         VITE_ELECTION_API_URL: ${VITE_ELECTION_API_URL:-http://localhost:8000}
+        VITE_VOTER_API_URL: ${VITE_VOTER_API_URL:-http://localhost:8001}
+        VITE_VOTE_API_URL: ${VITE_VOTE_API_URL:-http://localhost:8002}
     ports:
       - "3000:80"
     depends_on:
       election-service:
+        condition: service_healthy
+      voter-service:
+        condition: service_healthy
+      vote-service:
         condition: service_healthy
     restart: unless-stopped
 
