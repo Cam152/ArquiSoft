@@ -1,7 +1,8 @@
 # Pruebas de punta a punta del Vote Service. Se usa encima de docker-compose.yml:
 #   ./vote-service/e2e/run.sh
 # Agrega un Voter Service simulado y el contenedor que ejecuta las pruebas, y quita
-# los puertos publicados para no chocar con el sistema si ya está corriendo.
+# los puertos publicados y los nombres fijos de contenedor para no chocar con el
+# sistema si ya está corriendo.
 services:
   mock-voter-service:
     build:
@@ -15,10 +16,18 @@ services:
       timeout: 2s
       retries: 10
 
+  elections-db:
+    container_name: !reset null
+
+  votes-db:
+    container_name: !reset null
+
   election-service:
+    container_name: !reset null
     ports: !reset []
 
   vote-service:
+    container_name: !reset null
     ports: !reset []
     environment:
       VOTER_SERVICE_URL: http://mock-voter-service:8001

@@ -7,6 +7,7 @@ services:
   # DATOS - ELECCIONES
   # ============================================================
   elections-db:
+    container_name: agr-elections-db
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${ELECTIONS_DB_USER:-elections}
@@ -26,6 +27,7 @@ services:
   # LÓGICA - ELECTION SERVICE
   # ============================================================
   election-service:
+    container_name: agr-election-lo
     build: ./election-service
     environment:
       DATABASE_URL: postgresql+psycopg2://${ELECTIONS_DB_USER:-elections}:${ELECTIONS_DB_PASSWORD:-elections}@elections-db:5432/${ELECTIONS_DB_NAME:-elections}
@@ -50,6 +52,7 @@ services:
   # DATOS - VOTANTES
   # ============================================================
   voters-db:
+    container_name: agr-voters-db
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${VOTERS_DB_USER:-voters}
@@ -71,6 +74,7 @@ services:
   # LÓGICA - VOTER SERVICE
   # ============================================================
   voter-service:
+    container_name: agr-voter-lo
     build: ./voter-service
     environment:
       DB_URL: jdbc:postgresql://voters-db:5432/${VOTERS_DB_NAME:-voters}
@@ -97,6 +101,7 @@ services:
   # DATOS - VOTOS
   # ============================================================
   votes-db:
+    container_name: agr-votes-db
     image: mongo:7
     # --quiet: no registra cada conexión del healthcheck
     command: ["mongod", "--quiet"]
@@ -114,6 +119,7 @@ services:
   # LÓGICA - VOTE SERVICE
   # ============================================================
   vote-service:
+    container_name: agr-vote-lo
     build: ./vote-service
     environment:
       MONGO_URI: mongodb://votes-db:27017
@@ -143,6 +149,7 @@ services:
   # PRESENTACIÓN - FRONTEND
   # ============================================================
   frontend:
+    container_name: agr-frontend-fr
     build:
       context: ./frontend
       args:

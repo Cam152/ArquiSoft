@@ -34,8 +34,9 @@ docker compose logs -f vote-service
 Queda disponible en http://localhost:8002. Detener: `docker compose down`. Detener y borrar los votos
 guardados: `docker compose down -v`.
 
-El compose levanta dos contenedores para este componente: `vote-service` (este código) y `votes-db`
-(imagen `mongo:7`, sin puerto publicado, con los datos en el volumen `votes-db-data`).
+El compose levanta dos contenedores para este componente: el servicio `vote-service` (este código,
+contenedor `agr-vote-lo`) y el servicio `votes-db` (contenedor `agr-votes-db`, imagen `mongo:7`, sin puerto
+publicado, con los datos en el volumen `votes-db-data`).
 
 ## Endpoints
 

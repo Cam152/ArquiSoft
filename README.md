@@ -307,8 +307,13 @@ puerto: solo el Vote Service la ve, por la red de Compose.
 
 ### 4.6 Docker Compose
 
-`docker-compose.yml` define hoy los siete contenedores: `elections-db`, `election-service`, `voters-db`,
+`docker-compose.yml` define hoy los siete servicios: `elections-db`, `election-service`, `voters-db`,
 `voter-service`, `votes-db`, `vote-service` y `frontend`.
+
+Cada uno tiene un `container_name` con el nombre del componente en la vista C&C, así que en `docker ps`
+aparecen como `agr-elections-db`, `agr-election-lo`, `agr-voters-db`, `agr-voter-lo`, `agr-votes-db`,
+`agr-vote-lo` y `agr-frontend-fr`. Los nombres de servicio no cambian: son los que se usan en las URLs
+entre servicios y en los comandos de `docker compose` (`logs`, `exec`, `up`).
 
 - `depends_on` con `condition: service_healthy`: el servicio espera a que su base de datos esté sana
   y el front-end espera al Election Service.
