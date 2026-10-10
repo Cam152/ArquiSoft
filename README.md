@@ -210,16 +210,18 @@ Está en `frontend/`.
 Recibe el voto, lo valida con los otros dos servicios, guarda el voto anónimo y calcula resultados.
 Está en `vote-service/` y escucha en el puerto 8002. Es el único dueño de la Votes DB.
 
-**Archivos:**
+**Estructura:** por capas, en `vote-service/internal/`. Cada capa solo depende de la que tiene debajo
+(handler → service → repository y client).
 
-| Archivo | Responsabilidad |
+| Paquete | Responsabilidad |
 |---|---|
-| `main.go` | Arranque: configuración, conexión a MongoDB, servidor HTTP y apagado ordenado |
-| `handlers.go` | Rutas (`net/http`), `POST /votes`, `GET /results/{election_id}`, `/health` y el middleware de CORS |
-| `clients.go` | Conector REST hacia el Election Service y el Voter Service (timeout de 5 segundos) |
-| `store.go` | Conector a MongoDB: colecciones `votes` y `audit`, índice y agregación de resultados |
-| `config.go` | Lee la configuración de variables de entorno |
-| `handlers_test.go` | Pruebas con MongoDB y los otros servicios simulados |
+| `main.go` | Arranque: configuración, conexión a MongoDB, armado de las capas, servidor HTTP y apagado ordenado |
+| `internal/handler` | Capa HTTP: rutas (`net/http`), `POST /votes`, `GET /results/{election_id}`, `/health` y el middleware de CORS |
+| `internal/service` | Capa de lógica: flujo de votación, compensación y cálculo de resultados |
+| `internal/repository` | Capa de datos: colecciones `votes` y `audit` de MongoDB, índice y agregación de resultados |
+| `internal/client` | Conector REST hacia el Election Service y el Voter Service (timeout de 5 segundos) |
+| `internal/model` | Tipos del dominio que comparten las capas |
+| `internal/config` | Lee la configuración de variables de entorno |
 | `Dockerfile` | Compila el binario en `golang:1.23-alpine` y lo ejecuta en `alpine:3.20` |
 
 **Cómo arranca:** espera a que MongoDB responda (reintenta hasta 30 veces), crea el índice
@@ -699,6 +701,8 @@ Son decisiones de prototipo; conviene mencionarlas como trabajo futuro en la pre
 ├── vote-service/        (Go)                    completo
 │   ├── Dockerfile
 │   ├── go.mod, go.sum
-│   └── *.go
+│   ├── main.go
+│   ├── internal/        (handler, service, repository, client, model, config)
+│   └── e2e/
 └── voter-service/       (Java, Spring Boot)     completo
 ```

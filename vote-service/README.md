@@ -127,7 +127,16 @@ docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine go test ./...
 ```
 
 Con Go 1.23 o superior instalado basta `go test ./...`. Las pruebas simulan MongoDB, el Election Service
-y el Voter Service, así que no necesitan el compose.
+y el Voter Service, así que no necesitan el compose. Hay dos grupos: `internal/service` prueba la lógica
+sola y `internal/handler` recorre todas las capas por HTTP.
+
+Las pruebas de punta a punta levantan el Vote Service, MongoDB y el Election Service reales en un
+proyecto de Compose aparte (solo el Voter Service es simulado) y lo borran al terminar. Desde la raíz
+del repositorio:
+
+```bash
+./vote-service/e2e/run.sh
+```
 
 ## Variables de entorno
 
@@ -154,14 +163,43 @@ Base `votes`, dos colecciones. Ninguna guarda datos del votante.
 
 ## Estructura del código
 
-| Archivo | Responsabilidad |
+Arquitectura por capas. Cada capa solo depende de la que tiene debajo, y la capa de servicio usa
+interfaces, así que no conoce ni HTTP ni MongoDB.
+
+```mermaid
+flowchart TB
+  H["handler<br/>HTTP: rutas, CORS, códigos de respuesta"]
+  S["service<br/>flujo de votación, compensación y resultados"]
+  R["repository<br/>MongoDB"]
+  C["client<br/>REST hacia Election y Voter Service"]
+  H --> S
+  S --> R
+  S --> C
+```
+
+```
+vote-service/
+├── main.go                  arma las capas y arranca el servidor
+├── internal/
+│   ├── config/              configuración por variables de entorno
+│   ├── handler/             capa HTTP
+│   ├── service/             capa de lógica
+│   ├── repository/          capa de datos (MongoDB)
+│   ├── client/              conectores REST a los otros servicios
+│   └── model/               tipos del dominio que comparten las capas
+├── e2e/                     pruebas de punta a punta
+└── Dockerfile
+```
+
+| Paquete | Responsabilidad |
 |---|---|
-| `main.go` | Arranque: configuración, conexión a MongoDB, servidor HTTP y apagado ordenado |
-| `handlers.go` | Rutas (`net/http`), los tres endpoints y el middleware de CORS |
-| `clients.go` | Conector REST hacia el Election Service y el Voter Service (timeout de 5 segundos) |
-| `store.go` | Conector a MongoDB: inserción de votos y auditoría, índice y agregación de resultados |
-| `config.go` | Lee la configuración de variables de entorno |
-| `handlers_test.go` | Pruebas de los endpoints |
+| `main.go` | Arranque: configuración, conexión a MongoDB, armado de las capas, servidor HTTP y apagado ordenado |
+| `internal/handler` | Rutas (`net/http`), los tres endpoints y el middleware de CORS. Lee la petición, llama al servicio y traduce sus errores a códigos HTTP |
+| `internal/service` | El flujo de `POST /votes` (validar, marcar, guardar, compensar) y el cálculo de resultados. Define las interfaces `VoteStore`, `ElectionGateway` y `VoterGateway` |
+| `internal/repository` | Conector a MongoDB: inserción de votos y auditoría, índice y agregación de resultados |
+| `internal/client` | Conector REST hacia el Election Service y el Voter Service (timeout de 5 segundos) |
+| `internal/model` | `Vote`, `AuditEvent`, `Election`, `Candidate`, `Results` y los errores del dominio |
+| `internal/config` | Lee la configuración de variables de entorno |
 | `Dockerfile` | Compila en `golang:1.23-alpine` y ejecuta el binario en `alpine:3.20` |
 
 Al arrancar espera a que MongoDB responda (reintenta hasta 30 veces, una por segundo) y crea el índice.

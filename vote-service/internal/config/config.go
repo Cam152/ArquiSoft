@@ -1,11 +1,12 @@
-package main
+// Package config lee la configuración del servicio de variables de entorno.
+package config
 
 import (
 	"os"
 	"strings"
 )
 
-// Config es la configuración del servicio. Se lee de variables de entorno.
+// Config es la configuración del servicio.
 type Config struct {
 	Port               string
 	MongoURI           string
@@ -16,7 +17,8 @@ type Config struct {
 	CORSOrigins        []string
 }
 
-func loadConfig() Config {
+// Load lee las variables de entorno; todas tienen un valor por defecto.
+func Load() Config {
 	var origins []string
 	for _, o := range strings.Split(getenv("CORS_ORIGINS", "http://localhost:3000"), ",") {
 		if o = strings.TrimSpace(o); o != "" {

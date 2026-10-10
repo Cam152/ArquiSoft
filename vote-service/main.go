@@ -9,24 +9,34 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"vote-service/internal/client"
+	"vote-service/internal/config"
+	"vote-service/internal/handler"
+	"vote-service/internal/repository"
+	"vote-service/internal/service"
 )
 
 func main() {
 	log.SetOutput(os.Stdout)
-	cfg := loadConfig()
+	cfg := config.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	store, err := newMongoStore(ctx, cfg)
+	store, err := repository.NewMongoStore(ctx, cfg.MongoURI, cfg.MongoDB)
 	if err != nil {
 		log.Fatalf("no se pudo conectar a MongoDB: %v", err)
 	}
 
-	app := &App{cfg: cfg, store: store, clients: newClients(cfg)}
+	voting := service.NewVoting(
+		store,
+		client.NewElectionClient(cfg.ElectionServiceURL),
+		client.NewVoterClient(cfg.VoterServiceURL, cfg.ServiceAPIKey),
+	)
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           app.routes(),
+		Handler:           handler.New(voting, cfg.CORSOrigins).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

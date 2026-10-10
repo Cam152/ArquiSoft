@@ -1,4 +1,4 @@
-package main
+package handler_test
 
 import (
 	"context"
@@ -9,16 +9,24 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"vote-service/internal/client"
+	"vote-service/internal/handler"
+	"vote-service/internal/model"
+	"vote-service/internal/service"
 )
+
+// Estas pruebas recorren todas las capas (handler, service y client). Solo se
+// simulan MongoDB, el Election Service y el Voter Service.
 
 // fakeStore reemplaza a MongoDB en las pruebas.
 type fakeStore struct {
-	votes      []Vote
-	audit      []AuditEvent
+	votes      []model.Vote
+	audit      []model.AuditEvent
 	failInsert bool
 }
 
-func (s *fakeStore) InsertVote(_ context.Context, vote Vote) error {
+func (s *fakeStore) InsertVote(_ context.Context, vote model.Vote) error {
 	if s.failInsert {
 		return errors.New("mongo caído")
 	}
@@ -26,7 +34,7 @@ func (s *fakeStore) InsertVote(_ context.Context, vote Vote) error {
 	return nil
 }
 
-func (s *fakeStore) InsertAudit(_ context.Context, event AuditEvent) error {
+func (s *fakeStore) InsertAudit(_ context.Context, event model.AuditEvent) error {
 	s.audit = append(s.audit, event)
 	return nil
 }
@@ -41,6 +49,12 @@ func (s *fakeStore) CountByCandidate(_ context.Context, electionID int) (map[int
 	return counts, nil
 }
 
+func writeJSON(w http.ResponseWriter, status int, body map[string]string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(body)
+}
+
 // fakeVoters simula el Voter Service: un solo votante con el token "good".
 type fakeVoters struct {
 	voted   bool
@@ -52,11 +66,11 @@ func (f *fakeVoters) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /voters/mark-voted", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer good" || r.Header.Get("X-Service-Key") != "test-key" {
-			writeError(w, http.StatusUnauthorized, "Token inválido")
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "Token inválido"})
 			return
 		}
 		if f.voted {
-			writeError(w, http.StatusConflict, "El votante ya votó")
+			writeJSON(w, http.StatusConflict, map[string]string{"detail": "El votante ya votó"})
 			return
 		}
 		f.voted = true
@@ -82,6 +96,11 @@ type env struct {
 	voters *fakeVoters
 }
 
+func newApp(store *fakeStore, electionURL, voterURL string) http.Handler {
+	voting := service.NewVoting(store, client.NewElectionClient(electionURL), client.NewVoterClient(voterURL, "test-key"))
+	return handler.New(voting, []string{"http://localhost:3000"}).Routes()
+}
+
 func newEnv(t *testing.T) *env {
 	t.Helper()
 	var elections map[string]json.RawMessage
@@ -91,7 +110,7 @@ func newEnv(t *testing.T) *env {
 	electionSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, ok := elections[strings.TrimPrefix(r.URL.Path, "/elections/")]
 		if !ok {
-			writeError(w, http.StatusNotFound, "Elección no encontrada")
+			writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Elección no encontrada"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -103,15 +122,8 @@ func newEnv(t *testing.T) *env {
 	voterSrv := httptest.NewServer(voters.handler())
 	t.Cleanup(voterSrv.Close)
 
-	cfg := Config{
-		ElectionServiceURL: electionSrv.URL,
-		VoterServiceURL:    voterSrv.URL,
-		ServiceAPIKey:      "test-key",
-		CORSOrigins:        []string{"http://localhost:3000"},
-	}
 	store := &fakeStore{}
-	app := &App{cfg: cfg, store: store, clients: newClients(cfg)}
-	return &env{app: app.routes(), store: store, voters: voters}
+	return &env{app: newApp(store, electionSrv.URL, voterSrv.URL), store: store, voters: voters}
 }
 
 func (e *env) do(method, path, token, body string) *httptest.ResponseRecorder {
@@ -200,9 +212,7 @@ func TestFailedInsertIsCompensated(t *testing.T) {
 }
 
 func TestUnreachableServicesReturn502(t *testing.T) {
-	e := newEnv(t)
-	cfg := Config{ElectionServiceURL: "http://127.0.0.1:1", VoterServiceURL: "http://127.0.0.1:1"}
-	down := (&App{cfg: cfg, store: e.store, clients: newClients(cfg)}).routes()
+	down := newApp(&fakeStore{}, "http://127.0.0.1:1", "http://127.0.0.1:1")
 
 	req := httptest.NewRequest("POST", "/votes", strings.NewReader(`{"election_id": 1, "candidate_id": 2}`))
 	req.Header.Set("Authorization", "Bearer good")
@@ -214,16 +224,16 @@ func TestUnreachableServicesReturn502(t *testing.T) {
 func TestResults(t *testing.T) {
 	e := newEnv(t)
 	for _, candidateID := range []int{2, 2, 1} {
-		e.store.votes = append(e.store.votes, Vote{ElectionID: 1, CandidateID: candidateID})
+		e.store.votes = append(e.store.votes, model.Vote{ElectionID: 1, CandidateID: candidateID})
 	}
 	rec := e.do("GET", "/results/1", "", "")
 	wantStatus(t, rec, http.StatusOK)
 
-	var got resultsResponse
+	var got model.Results
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := []candidateResult{
+	want := []model.CandidateResult{
 		{CandidateID: 2, CandidateName: "Luis Herrera", Votes: 2, Percentage: 66.67},
 		{CandidateID: 1, CandidateName: "Ana Torres", Votes: 1, Percentage: 33.33},
 		{CandidateID: 3, CandidateName: "Camila Duarte", Votes: 0, Percentage: 0},
