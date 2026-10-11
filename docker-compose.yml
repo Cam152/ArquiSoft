@@ -59,7 +59,8 @@ services:
       POSTGRES_PASSWORD: ${VOTERS_DB_PASSWORD:-voters}
       POSTGRES_DB: ${VOTERS_DB_NAME:-voters}
     ports:
-      - "5432:5432"
+      # Puerto del equipo configurable: cámbialo en .env si ya tienes PostgreSQL local en el 5432.
+      - "${VOTERS_DB_PORT:-5432}:5432"
     volumes:
       - voters-db-data:/var/lib/postgresql/data
     healthcheck:

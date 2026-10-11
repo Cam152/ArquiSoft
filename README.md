@@ -30,15 +30,15 @@ comprobar que funciona.
 
 Los siete componentes están implementados y se levantan juntos con Docker Compose.
 
-| Componente (vista C&C) | Contenedor | Lenguaje y herramientas | Estado | Responsable |
-|---|---|---|---|---|
-| `AGR_Frontend_FR` | `agr-frontend-fr` | TypeScript, React, Vite, nginx | Completo | Cristian |
-| `AGR_Election_LO` | `agr-election-lo` | Python, FastAPI, SQLAlchemy, Strawberry | Completo | David Benjumea |
-| `AGR_Elections_DB` | `agr-elections-db` | PostgreSQL | Completa | David Benjumea |
-| `AGR_Voter_LO` | `agr-voter-lo` | Java, Spring Boot, JPA, JWT | Completo | Esteban y Camilo |
-| `AGR_Voters_DB` | `agr-voters-db` | PostgreSQL | Completa | Esteban y Camilo |
-| `AGR_Vote_LO` | `agr-vote-lo` | Go, net/http, driver de MongoDB | Completo | Maicol y Miguel |
-| `AGR_Votes_DB` | `agr-votes-db` | MongoDB | Completa | Maicol y Miguel |
+| Componente (vista C&C) y contenedor | Lenguaje y herramientas | Estado | Responsable |
+|---|---|---|---|
+| `agr-frontend-fr` | TypeScript, React, Vite, nginx | Completo | Cristian |
+| `agr-election-lo` | Python, FastAPI, SQLAlchemy, Strawberry | Completo | David Benjumea |
+| `agr-elections-db` | PostgreSQL | Completa | David Benjumea |
+| `agr-voter-lo` | Java, Spring Boot, JPA, JWT | Completo | Esteban y Camilo |
+| `agr-voters-db` | PostgreSQL | Completa | Esteban y Camilo |
+| `agr-vote-lo` | Go, net/http, driver de MongoDB | Completo | Maicol y Miguel |
+| `agr-votes-db` | MongoDB | Completa | Maicol y Miguel |
 
 Lo que se puede hacer hoy, todo desde el navegador en http://localhost:3000:
 
@@ -61,17 +61,17 @@ servicios directamente). Además es cliente-servidor y de tres capas.
 ```mermaid
 flowchart TB
   subgraph PRES["Presentación"]
-    FE["AGR_Frontend_FR<br/>TypeScript, React, Vite"]
+    FE["agr-frontend-fr<br/>TypeScript, React, Vite"]
   end
   subgraph LOGI["Lógica"]
-    VS["AGR_Voter_LO<br/>Java, Spring Boot"]
-    TS["AGR_Vote_LO<br/>Go"]
-    ES["AGR_Election_LO<br/>Python, FastAPI"]
+    VS["agr-voter-lo<br/>Java, Spring Boot"]
+    TS["agr-vote-lo<br/>Go"]
+    ES["agr-election-lo<br/>Python, FastAPI"]
   end
   subgraph DATA["Datos"]
-    VDB[("AGR_Voters_DB<br/>PostgreSQL")]
-    TDB[("AGR_Votes_DB<br/>MongoDB")]
-    EDB[("AGR_Elections_DB<br/>PostgreSQL")]
+    VDB[("agr-voters-db<br/>PostgreSQL")]
+    TDB[("agr-votes-db<br/>MongoDB")]
+    EDB[("agr-elections-db<br/>PostgreSQL")]
   end
   FE -- REST --> VS
   FE -- REST --> TS
@@ -84,33 +84,37 @@ flowchart TB
 ```
 
 La vista formal con puertos (`p1` a `p16`) está en [`artifacts/AGORA_CC.png`](artifacts/AGORA_CC.png) y se
-describe en [`artifacts/p1_1b.md`](artifacts/p1_1b.md).
+describe en [`artifacts/p1_1b.md`](artifacts/p1_1b.md). Ahí cada API se dibuja con un círculo
+del lado del servidor (quien la ofrece) y un semicírculo del lado del cliente (quien la consume).
 
-**Convención de nombres.** `AGR_<Nombre>_<nivel>`: `_FR` es presentación, `_LO` es lógica y `_DB` es datos. En
-Docker Compose el servicio conserva su nombre técnico y el contenedor lleva el nombre de la vista:
+**Convención de nombres.** `agr-<nombre>-<nivel>`: `-fr` es presentación, `-lo` es lógica y `-db` es datos. Cada
+componente de la vista C&C se llama **igual que su contenedor** (`container_name` en `docker-compose.yml`), así que
+el nombre del diagrama es el mismo que muestra `docker ps`. Hay un segundo nombre que no hay que confundir con ese:
+el del **servicio de Compose** (`election-service`, `voters-db`...). Ese es el que usan los comandos
+`docker compose logs|exec|up <servicio>` y las URLs entre contenedores (`http://election-service:8000`).
 
-| Componente | Servicio en `docker-compose.yml` | Contenedor | Puerto en tu equipo |
-|---|---|---|---|
-| `AGR_Frontend_FR` | `frontend` | `agr-frontend-fr` | 3000 (el contenedor escucha en 80) |
-| `AGR_Election_LO` | `election-service` | `agr-election-lo` | 8000 |
-| `AGR_Elections_DB` | `elections-db` | `agr-elections-db` | no se publica (5432 interno) |
-| `AGR_Voter_LO` | `voter-service` | `agr-voter-lo` | 8001 |
-| `AGR_Voters_DB` | `voters-db` | `agr-voters-db` | 5432 (publicado, ver sección 11) |
-| `AGR_Vote_LO` | `vote-service` | `agr-vote-lo` | 8002 |
-| `AGR_Votes_DB` | `votes-db` | `agr-votes-db` | no se publica (27017 interno) |
+| Componente y contenedor | Servicio en `docker-compose.yml` | Puerto en tu equipo |
+|---|---|---|
+| `agr-frontend-fr` | `frontend` | 3000 (el contenedor escucha en 80) |
+| `agr-election-lo` | `election-service` | 8000 |
+| `agr-elections-db` | `elections-db` | no se publica (5432 interno) |
+| `agr-voter-lo` | `voter-service` | 8001 |
+| `agr-voters-db` | `voters-db` | 5432 (publicado; se cambia con `VOTERS_DB_PORT`, ver sección 11) |
+| `agr-vote-lo` | `vote-service` | 8002 |
+| `agr-votes-db` | `votes-db` | no se publica (27017 interno) |
 
 Decisiones de diseño:
 
 - **Una base de datos por servicio, ninguna compartida.** Cada servicio es dueño de sus datos y los demás solo
   los ven a través de su API.
-- **Identidad y voto separados.** Quién votó vive en PostgreSQL (`AGR_Voters_DB`) y qué se votó vive en MongoDB
-  (`AGR_Votes_DB`). El voto no guarda ningún dato del votante, así que el anonimato depende de esa separación.
+- **Identidad y voto separados.** Quién votó vive en PostgreSQL (`agr-voters-db`) y qué se votó vive en MongoDB
+  (`agr-votes-db`). El voto no guarda ningún dato del votante, así que el anonimato depende de esa separación.
 - **Dos tipos de conector HTTP:** REST (entre servicios y para votar) y GraphQL (el front-end consulta las
   elecciones con sus candidatos anidados en una sola petición). Los conectores a las bases de datos
   (*Database connector*) no son HTTP: usan el protocolo de cada base.
 - **Ningún servicio comparte código con otro.** Se hablan solo por los contratos de la sección 6.
-- **`AGR_Vote_LO` coordina el voto** y es el único servicio que llama a otros dos. `AGR_Voter_LO` y
-  `AGR_Election_LO` no se llaman entre sí.
+- **`agr-vote-lo` coordina el voto** y es el único servicio que llama a otros dos. `agr-voter-lo` y
+  `agr-election-lo` no se llaman entre sí.
 
 ## 3. Cómo ejecutarlo
 
@@ -164,13 +168,13 @@ docker compose down -v               # detiene y borra los datos (vuelve a carga
 - `error during connect ... dockerDesktopLinuxEngine`: Docker Desktop está cerrado. Ábranlo y esperen a que diga
   "Engine running".
 - `port is already allocated` o `address already in use`: otro programa usa uno de los puertos. El más común es
-  PostgreSQL local en el `5432`. Ciérrenlo o cambien el puerto publicado en `docker-compose.yml`.
+  PostgreSQL local en el `5432`. Ciérrenlo o pongan `VOTERS_DB_PORT=5433` en un archivo `.env`.
 - Si la compilación se corta por la red, vuelvan a ejecutar `docker compose up --build`: lo ya descargado queda en
   caché.
 
 ## 4. Cómo funciona cada componente
 
-### 4.1 Election Service (Python): `AGR_Election_LO`
+### 4.1 Election Service (Python): `agr-election-lo`
 
 Gestiona elecciones y candidatos. Está en `election-service/` y escucha en el puerto 8000.
 
@@ -253,13 +257,13 @@ elección con sus candidatos en una sola consulta y solo los campos necesarios:
 **Pruebas:** desde `election-service/`, `pip install -r requirements-dev.txt` y luego `pytest`. Son 12 y usan
 SQLite en memoria, no necesitan Docker.
 
-### 4.2 Elections DB (PostgreSQL): `AGR_Elections_DB`
+### 4.2 Elections DB (PostgreSQL): `agr-elections-db`
 
 Dos tablas: `elections` (nombre, descripción, estado, fechas) y `candidates` (con llave foránea a `elections`,
 borrado en cascada y número único por elección). Los datos persisten en el volumen `elections-db-data`. El
 Election Service se conecta por SQLAlchemy y psycopg2 (*Database connector*). No se publica ningún puerto.
 
-### 4.3 Voter Service (Java): `AGR_Voter_LO`
+### 4.3 Voter Service (Java): `agr-voter-lo`
 
 Autentica a los votantes y lleva el control de quién ya votó. Está en `voter-service/`, escucha en el puerto 8001 y
 es el único dueño de la Voters DB.
@@ -316,7 +320,7 @@ curl -X POST http://localhost:8001/auth/login -H "Content-Type: application/json
 necesita la base. El arranque sano del contenedor (`healthy`) cubre lo mismo. El resto del servicio se prueba por
 HTTP con `scripts/smoke_test.py`.
 
-### 4.4 Voters DB (PostgreSQL): `AGR_Voters_DB`
+### 4.4 Voters DB (PostgreSQL): `agr-voters-db`
 
 Una tabla, `voters`, que Hibernate crea al arrancar el Voter Service:
 
@@ -336,7 +340,7 @@ publica su puerto (`5432`), pensado para consultarlo mientras se desarrolla:
 docker compose exec voters-db psql -U voters -d voters -c "select id, document, name, has_voted from voters"
 ```
 
-### 4.5 Vote Service (Go): `AGR_Vote_LO`
+### 4.5 Vote Service (Go): `agr-vote-lo`
 
 Recibe el voto, lo valida con los otros dos servicios, guarda el voto anónimo y calcula resultados. Está en
 `vote-service/` y escucha en el puerto 8002. Es el único dueño de la Votes DB.
@@ -420,7 +424,7 @@ así que no necesitan el compose. Las 8 de punta a punta (`e2e/`) levantan el si
 `./vote-service/e2e/run.sh` (ver `PRUEBAS.md`). Si cambian dependencias, corran `go mod tidy` y suban `go.mod` y
 `go.sum`.
 
-### 4.6 Votes DB (MongoDB): `AGR_Votes_DB`
+### 4.6 Votes DB (MongoDB): `agr-votes-db`
 
 Base `votes` con dos colecciones. Los datos persisten en el volumen `votes-db-data`. No se publica ningún puerto:
 solo el Vote Service la ve, por la red de Compose.
@@ -430,7 +434,7 @@ solo el Vote Service la ve, por la red de Compose.
 - `audit`: eventos `{type: "vote_registered", election_id, at}`. Tampoco lleva datos del votante, y `at` se
   redondea igual que `cast_at`.
 
-### 4.7 Front-end (TypeScript, React): `AGR_Frontend_FR`
+### 4.7 Front-end (TypeScript, React): `agr-frontend-fr`
 
 Está en `frontend/` (su propia guía, más detallada, es [`frontend/README.md`](frontend/README.md)). Es una
 aplicación de una sola página (React 18, `react-router-dom` 6, Vite 5, TypeScript) que corre en el navegador y
@@ -517,7 +521,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | `agr-elections-db` | `postgres:16-alpine` | no se publica | `elections-db-data` | `pg_isready` | nada |
 | `agr-election-lo` | `./election-service` | `8000:8000` | ninguno | `GET /health` | `elections-db` |
-| `agr-voters-db` | `postgres:16-alpine` | `5432:5432` | `voters-db-data` | `pg_isready` | nada |
+| `agr-voters-db` | `postgres:16-alpine` | `5432:5432` (`VOTERS_DB_PORT`) | `voters-db-data` | `pg_isready` | nada |
 | `agr-voter-lo` | `./voter-service` | `8001:8001` | ninguno | `GET /health` | `voters-db` |
 | `agr-votes-db` | `mongo:7` | no se publica | `votes-db-data` | `mongosh` (ping) | nada |
 | `agr-vote-lo` | `./vote-service` | `8002:8002` | ninguno | `GET /health` | `votes-db`, `election-service` |
@@ -525,7 +529,7 @@ flowchart LR
 
 - `depends_on` con `condition: service_healthy`: cada servicio espera a que lo que necesita esté sano. El Vote
   Service no espera al Voter Service porque solo lo usa al recibir un voto.
-- Los `container_name` con el nombre de la vista (`agr-*`) son fijos, así que no se pueden levantar dos copias del
+- Los `container_name` (`agr-*`, los mismos nombres de la vista C&C) son fijos, así que no se pueden levantar dos copias del
   sistema a la vez en el mismo equipo. Las pruebas de punta a punta quitan esos nombres para no chocar.
 - Los datos viven en tres volúmenes con nombre. `docker compose down` los conserva y `down -v` los borra.
 
@@ -618,12 +622,12 @@ petición previa `OPTIONS` y acepta ese origen. En el Election Service y el Vote
 ```mermaid
 sequenceDiagram
   actor V as Votante
-  participant FE as AGR_Frontend_FR
-  participant VS as AGR_Voter_LO
-  participant TS as AGR_Vote_LO
-  participant ES as AGR_Election_LO
-  participant VDB as AGR_Voters_DB
-  participant TDB as AGR_Votes_DB
+  participant FE as agr-frontend-fr
+  participant VS as agr-voter-lo
+  participant TS as agr-vote-lo
+  participant ES as agr-election-lo
+  participant VDB as agr-voters-db
+  participant TDB as agr-votes-db
   V->>FE: documento y clave
   FE->>VS: POST /auth/login
   VS-->>FE: JWT (1 hora)
@@ -654,9 +658,9 @@ comparten transacción, si el último paso falla se compensa desmarcando al vota
 | Requisito | Cómo se cumple | Cómo comprobarlo |
 |---|---|---|
 | Arquitectura distribuida | 7 contenedores que se comunican por red | `docker compose ps` |
-| Al menos 1 componente de presentación | `AGR_Frontend_FR` (React) | http://localhost:3000 |
-| Al menos 2 componentes de lógica | `AGR_Voter_LO`, `AGR_Vote_LO` y `AGR_Election_LO` | URLs `/health` de la sección 3 |
-| Al menos 2 componentes de datos (relacional y NoSQL) | PostgreSQL (`AGR_Elections_DB` y `AGR_Voters_DB`) y MongoDB (`AGR_Votes_DB`) | `docker compose ps` |
+| Al menos 1 componente de presentación | `agr-frontend-fr` (React) | http://localhost:3000 |
+| Al menos 2 componentes de lógica | `agr-voter-lo`, `agr-vote-lo` y `agr-election-lo` | URLs `/health` de la sección 3 |
+| Al menos 2 componentes de datos (relacional y NoSQL) | PostgreSQL (`agr-elections-db` y `agr-voters-db`) y MongoDB (`agr-votes-db`) | `docker compose ps` |
 | Al menos 2 tipos de conectores HTTP | REST y GraphQL | Swagger y GraphiQL en el puerto 8000 |
 | Al menos 3 lenguajes de propósito general | Python, Java y Go (más TypeScript en el front-end) | Carpetas `election-service/`, `voter-service/`, `vote-service/`, `frontend/` |
 | Despliegue orientado a contenedores | Docker y Docker Compose | `docker compose up --build` |
