@@ -28,7 +28,7 @@ services:
   # ============================================================
   election-service:
     container_name: agr-election-lo
-    build: ./election-service
+    build: ./agr-election-lo
     environment:
       DATABASE_URL: postgresql+psycopg2://${ELECTIONS_DB_USER:-elections}:${ELECTIONS_DB_PASSWORD:-elections}@elections-db:5432/${ELECTIONS_DB_NAME:-elections}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
@@ -59,7 +59,7 @@ services:
       POSTGRES_PASSWORD: ${VOTERS_DB_PASSWORD:-voters}
       POSTGRES_DB: ${VOTERS_DB_NAME:-voters}
     ports:
-      # Puerto del equipo configurable: cámbialo en .env si ya tienes PostgreSQL local en el 5432.
+      # Puerto del equipo configurable mediante .env
       - "${VOTERS_DB_PORT:-5432}:5432"
     volumes:
       - voters-db-data:/var/lib/postgresql/data
@@ -76,7 +76,7 @@ services:
   # ============================================================
   voter-service:
     container_name: agr-voter-lo
-    build: ./voter-service
+    build: ./agr-voter-lo
     environment:
       DB_URL: jdbc:postgresql://voters-db:5432/${VOTERS_DB_NAME:-voters}
       DB_USER: ${VOTERS_DB_USER:-voters}
@@ -104,7 +104,7 @@ services:
   votes-db:
     container_name: agr-votes-db
     image: mongo:7
-    # --quiet: no registra cada conexión del healthcheck
+    # --quiet evita registrar cada conexión del healthcheck
     command: ["mongod", "--quiet"]
     volumes:
       - votes-db-data:/data/db
@@ -121,7 +121,7 @@ services:
   # ============================================================
   vote-service:
     container_name: agr-vote-lo
-    build: ./vote-service
+    build: ./agr-vote-lo
     environment:
       MONGO_URI: mongodb://votes-db:27017
       MONGO_DB: ${MONGO_DB:-votes}
@@ -136,8 +136,7 @@ services:
         condition: service_healthy
       election-service:
         condition: service_healthy
-      # No espera al voter-service: solo lo llama al recibir un voto y responde 502 si no está.
-      # (Así también funcionan las pruebas de punta a punta, que lo reemplazan por un simulado.)
+      # No espera al voter-service: responde 502 si no está disponible al votar.
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8002/health"]
       interval: 10s
@@ -151,9 +150,9 @@ services:
   # PRESENTACIÓN - FRONTEND
   # ============================================================
   frontend:
-    container_name: agr-frontend-fr
+    container_name: agr-web-fr
     build:
-      context: ./frontend
+      context: ./agr-web-fr
       args:
         VITE_ELECTION_API_URL: ${VITE_ELECTION_API_URL:-http://localhost:8000}
         VITE_VOTER_API_URL: ${VITE_VOTER_API_URL:-http://localhost:8001}
