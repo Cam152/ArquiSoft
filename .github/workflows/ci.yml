@@ -65,7 +65,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Pruebas de punta a punta (Docker Compose)
-        run: ./agr-vote-lo/e2e/run.sh
+        run: |
+          chmod +x ./agr-vote-lo/e2e/run.sh
+          ./agr-vote-lo/e2e/run.sh
 
   system:
     name: Sistema completo - arranque con Docker Compose
