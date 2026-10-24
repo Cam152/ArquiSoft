@@ -1,12 +1,12 @@
 # Pruebas de punta a punta del Vote Service. Se usa encima de docker-compose.yml:
-#   ./vote-service/e2e/run.sh
+#   ./agr-vote-lo/e2e/run.sh
 # Agrega un Voter Service simulado y el contenedor que ejecuta las pruebas, y quita
 # los puertos publicados y los nombres fijos de contenedor para no chocar con el
 # sistema si ya está corriendo.
 services:
   mock-voter-service:
     build:
-      context: ./vote-service
+      context: ./agr-vote-lo
       dockerfile: e2e/mock-voter/Dockerfile
     environment:
       SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
@@ -39,7 +39,7 @@ services:
     image: golang:1.23-alpine
     working_dir: /src
     volumes:
-      - ./vote-service:/src:ro
+      - ./agr-vote-lo:/src:ro
     environment:
       VOTE_SERVICE_URL: http://vote-service:8002
       ELECTION_SERVICE_URL: http://election-service:8000
