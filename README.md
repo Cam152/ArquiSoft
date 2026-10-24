@@ -2,574 +2,611 @@
   <img src="artifacts/AGORA_logo.png" alt="AGORA, sistema de votación electrónica" width="320">
 </p>
 
-# AGORA: sistema de votación electrónica (Prototipo 1)
+# AGORA: sistema de votación electrónica (Prototipo 2)
 
-Guía del equipo 1b para el primer prototipo de Arquitectura de Software (UNAL, 2026-II, prof. Jeisson Andrés
-Vergara Vargas). Aquí está lo que hace el sistema, cómo está hecho cada componente, cómo ejecutarlo y cómo
-comprobar que funciona.
-
-- Entrega del artefacto: lunes 12 de octubre de 2026, archivo `p1_1b.pdf` en MiCampus (lo sube un solo integrante).
-  Se genera desde [`artifacts/p1_1b.md`](artifacts/p1_1b.md).
-- Presentación en clase: martes 13 de octubre de 2026.
-- Plan de pruebas y criterio para pasar a `main`: [`PRUEBAS.md`](PRUEBAS.md).
+Guía del equipo 1b para el segundo prototipo de Arquitectura de Software (UNAL, 2026-II, prof. Jeisson Andrés
+Vergara Vargas).
+- Entrega del artefacto: lunes 2 de noviembre de 2026, archivo `p2_1b.pdf` en MiCampus (lo sube un solo integrante).
+  Se genera desde `artifacts/p2_1b.md`.
+- Presentación en clase: martes 3 de noviembre de 2026.
 
 ## Contenido
 
-1. [Estado actual](#1-estado-actual)
+1. [Componentes del Prototipo 2](#1-componentes-del-prototipo-2)
 2. [Arquitectura](#2-arquitectura)
 3. [Cómo ejecutarlo](#3-cómo-ejecutarlo)
 4. [Cómo funciona cada componente](#4-cómo-funciona-cada-componente)
-5. [Contratos entre servicios](#6-contratos-entre-servicios)
-6. [Flujo completo de un voto](#7-flujo-completo-de-un-voto)
-7. [Cómo se cumplen los requisitos del enunciado](#8-cómo-se-cumplen-los-requisitos-del-enunciado)
-8. [Variables de entorno](#10-variables-de-entorno)
+5. [Contratos entre componentes](#5-contratos-entre-componentes)
+6. [Flujos completos](#6-flujos-completos)
+7. [Cómo se cumplen los requisitos del enunciado](#7-cómo-se-cumplen-los-requisitos-del-enunciado)
+8. [Variables de entorno](#8-variables-de-entorno)
+9. [Límites conocidos](#9-límites-conocidos)
+10. [Estructura del repositorio](#10-estructura-del-repositorio)
 
 ---
 
-## 1. Estado actual
+## 1. Componentes del Prototipo 2
 
-Los siete componentes están implementados y se levantan juntos con Docker Compose.
+AGORA permite listar elecciones con sus candidatos, autenticar votantes, registrar un voto anónimo (**una vez por
+votante en cada elección**), ver los resultados en vivo y administrar elecciones desde una consola de comandos.
 
-| Componente (vista C&C) y contenedor | Lenguaje y herramientas | Estado | Responsable |
-|---|---|---|---|
-| `agr-frontend-fr` | TypeScript, React, Vite, nginx | Completo | Cristian |
-| `agr-election-lo` | Python, FastAPI, SQLAlchemy, Strawberry | Completo | David Benjumea |
-| `agr-elections-db` | PostgreSQL | Completa | David Benjumea |
-| `agr-voter-lo` | Java, Spring Boot, JPA, JWT | Completo | Esteban y Camilo |
-| `agr-voters-db` | PostgreSQL | Completa | Esteban y Camilo |
-| `agr-vote-lo` | Go, net/http, driver de MongoDB | Completo | Maicol y Miguel |
-| `agr-votes-db` | MongoDB | Completa | Maicol y Miguel |
+| Componente | Nivel | Lenguaje y herramientas | Origen | Responsable |
+|---|---|---|---|---|
+| `agr-web-fr` | Presentación | TypeScript, Next.js (SSR) | Del P1, se migra de React SPA a Next.js | Cristian |
+| `agr-admin-fr` | Presentación | Go, Cobra (CLI) | Nuevo | Maicol |
+| `agr-gateway-or` | Orquestación | TypeScript, Node.js | Nuevo | David |
+| `agr-auth-lo` | Lógica | Java 21, Spring Boot, Spring Security, JWT | Nuevo (sale del login del Voter Service del P1) | Esteban |
+| `agr-voter-lo` | Lógica | Java 21, Spring Boot | Del P1, cambia: ahora solo registra participación | Camilo |
+| `agr-election-lo` | Lógica | Python, FastAPI, SQLAlchemy, Strawberry | Del P1, casi sin cambios | David |
+| `agr-vote-lo` | Lógica | Go, `net/http`, MongoDB, AMQP | Del P1, cambia: ya no orquesta, publica eventos | Maicol |
+| `agr-results-lo` | Lógica | Rust | Nuevo (los resultados salen del Vote Service) | Miguel |
+| `agr-audit-lo` | Lógica | C#, .NET | Nuevo | Camilo |
+| `agr-broker-as` | Asincronía | RabbitMQ | Nuevo | Maicol |
+| `agr-auth-db` | Datos | PostgreSQL 16 | Nuevo | Esteban |
+| `agr-voters-db` | Datos | PostgreSQL 16 | Del P1, cambia de tabla | Camilo |
+| `agr-elections-db` | Datos | PostgreSQL 16 | Del P1, sin cambios | David |
+| `agr-votes-db` | Datos | MongoDB 7 | Del P1, agrega campos | Maicol |
+| `agr-results-db` | Datos | Redis 7 | Nuevo | Miguel |
+| `agr-audit-db` | Datos | MongoDB 7 | Nuevo | Camilo |
 
-Lo que se puede hacer hoy, todo desde el navegador en http://localhost:3000:
+**Qué cambia respecto al Prototipo 1:**
 
-- Ver las elecciones con su estado y sus candidatos.
-- Iniciar sesión con un votante de prueba, votar en una elección abierta y ver los resultados.
-- Comprobar que no se puede votar dos veces y que una elección cerrada o en borrador rechaza votos.
-
-Lo que se hace por Swagger (http://localhost:8000/docs), porque no hay pantalla de administración: crear, editar,
-abrir y cerrar elecciones y candidatos.
-
-Pruebas automáticas que existen: 12 de `pytest` (Election Service), 13 unitarias y 8 de punta a punta en Go
-(Vote Service), una prueba de arranque en Java y un flujo de CI en GitHub Actions. Ver [`PRUEBAS.md`](PRUEBAS.md).
+| Aspecto | Prototipo 1 | Prototipo 2 |
+|---|---|---|
+| Front-end web | SPA en React (SOFEA) | SSR con Next.js |
+| Presentación | 1 componente | 2 (web y CLI de administración) |
+| Lógica | 3 servicios | 6 servicios (uno por integrante) |
+| Orquestación | Dentro de `agr-vote-lo` | Componente propio: `agr-gateway-or` |
+| Asincronía | Ninguna | RabbitMQ y consumidores de eventos |
+| Datos | 3 bases | 6 bases (PostgreSQL, MongoDB y Redis) |
+| Conectores HTTP | REST y GraphQL | REST, GraphQL y SSE |
+| Marca de "ya votó" | Una sola por votante (vota una vez en total) | Una por votante y elección |
+| Resultados | Se calculan en cada consulta; botón "Actualizar" | Conteo incremental en Redis; se actualizan solos (SSE) |
+| Administración | Swagger con una llave | CLI `agora` con la misma llave |
+| Lo que ve el navegador | Tres servicios en tres puertos | Solo el web (3000) y el gateway (8080) |
+| Lenguajes | Python, Java, Go, TypeScript | Python, Java, Go, TypeScript, Rust, C# |
 
 ## 2. Arquitectura
 
-Estilo: distribuido de tipo **Service-Based** (pocos servicios grandes, uno por dominio, cada uno con su propia
-base de datos), con un front-end **SOFEA** (el navegador descarga la aplicación una vez y luego consume los
-servicios directamente). Además es cliente-servidor y de tres capas.
+### 2.1 Vista de componentes y conectores
 
 ```mermaid
 flowchart TB
   subgraph PRES["Presentación"]
-    FE["agr-frontend-fr<br/>TypeScript, React, Vite"]
+    WEB["agr-web-fr<br/>TypeScript, Next.js (SSR)"]
+    ADM["agr-admin-fr<br/>Go, CLI de administración"]
+  end
+  subgraph ORQ["Orquestación"]
+    GW["agr-gateway-or<br/>TypeScript, Node.js<br/>API Gateway, BFF y saga del voto"]
   end
   subgraph LOGI["Lógica"]
-    VS["agr-voter-lo<br/>Java, Spring Boot"]
-    TS["agr-vote-lo<br/>Go"]
-    ES["agr-election-lo<br/>Python, FastAPI"]
+    AU["agr-auth-lo<br/>Java, Spring Boot"]
+    VO["agr-voter-lo<br/>Java, Spring Boot"]
+    EL["agr-election-lo<br/>Python, FastAPI"]
+    VT["agr-vote-lo<br/>Go"]
+    RS["agr-results-lo<br/>Rust"]
+    AD["agr-audit-lo<br/>C#, .NET"]
+  end
+  subgraph ASIN["Asincronía"]
+    BR[["agr-broker-as<br/>RabbitMQ"]]
   end
   subgraph DATA["Datos"]
+    ADB[("agr-auth-db<br/>PostgreSQL")]
     VDB[("agr-voters-db<br/>PostgreSQL")]
-    TDB[("agr-votes-db<br/>MongoDB")]
     EDB[("agr-elections-db<br/>PostgreSQL")]
+    TDB[("agr-votes-db<br/>MongoDB")]
+    RDB[("agr-results-db<br/>Redis")]
+    UDB[("agr-audit-db<br/>MongoDB")]
   end
-  FE -- REST --> VS
-  FE -- REST --> TS
-  FE -- GraphQL --> ES
-  TS -- REST --> VS
-  TS -- REST --> ES
-  VS -. Database connector .-> VDB
-  TS -. Database connector .-> TDB
-  ES -. Database connector .-> EDB
+
+  WEB -- "c1 REST, GraphQL y SSE" --> GW
+  ADM -- "c2 REST" --> GW
+  GW -- "c3 REST" --> AU
+  GW -- "c4 REST" --> VO
+  GW -- "c5 REST y GraphQL" --> EL
+  GW -- "c6 REST" --> VT
+  GW -- "c7 REST y SSE" --> RS
+  GW -- "c17 REST" --> AD
+  VT -- "c8 AMQP: publica VoteRegistered" --> BR
+  RS -- "c9 AMQP: se suscribe" --> BR
+  AD -- "c10 AMQP: se suscribe" --> BR
+  AU -. "c11 conector BD" .-> ADB
+  VO -. "c12 conector BD" .-> VDB
+  EL -. "c13 conector BD" .-> EDB
+  VT -. "c14 conector BD" .-> TDB
+  RS -. "c15 conector BD" .-> RDB
+  AD -. "c16 conector BD" .-> UDB
 ```
 
-La vista formal con puertos (`p1` a `p16`) está en [`artifacts/AGORA_CC.png`](artifacts/AGORA_CC.png) y se
-describe en [`artifacts/p1_1b.md`](artifacts/p1_1b.md). Ahí cada API se dibuja con un círculo
-del lado del servidor (quien la ofrece) y un semicírculo del lado del cliente (quien la consume).
+Los conectores c1 a c16 son los del entregable [`artifacts/p2_1b.md`](artifacts/p2_1b.md). El c17 (gateway a
+auditoría) permite que la CLI consulte el registro de auditoría. Las líneas continuas son HTTP o AMQP; las
+punteadas son conectores a bases de datos.
 
-**Convención de nombres.** `agr-<nombre>-<nivel>`: `-fr` es presentación, `-lo` es lógica y `-db` es datos. Cada
-componente de la vista C&C se llama **igual que su contenedor** (`container_name` en `docker-compose.yml`), así que
-el nombre del diagrama es el mismo que muestra `docker ps`. Hay un segundo nombre que no hay que confundir con ese:
-el del **servicio de Compose** (`election-service`, `voters-db`...). Ese es el que usan los comandos
-`docker compose logs|exec|up <servicio>` y las URLs entre contenedores (`http://election-service:8000`).
+### 2.2 Estilos y patrones
 
-| Componente y contenedor | Servicio en `docker-compose.yml` | Puerto en tu equipo |
+| Estilo o patrón | Dónde | Qué significa aquí |
 |---|---|---|
-| `agr-frontend-fr` | `frontend` | 3000 (el contenedor escucha en 80) |
-| `agr-election-lo` | `election-service` | 8000 |
-| `agr-elections-db` | `elections-db` | no se publica (5432 interno) |
-| `agr-voter-lo` | `voter-service` | 8001 |
-| `agr-voters-db` | `voters-db` | 5432 (publicado; se cambia con `VOTERS_DB_PORT`, ver sección 11) |
-| `agr-vote-lo` | `vote-service` | 8002 |
-| `agr-votes-db` | `votes-db` | no se publica (27017 interno) |
+| Microservicios | Los 6 componentes de lógica | Cada servicio tiene un dueño, su propia base y se despliega por separado |
+| Base de datos por servicio | Cada `-lo` con su `-db` | Ningún servicio lee la base de otro |
+| API Gateway y Backend-for-Frontend | `agr-gateway-or` | Único punto de entrada para la web y la CLI |
+| Saga orquestada | Voto, en `agr-gateway-or` | El gateway ejecuta los pasos del voto y compensa si falla el guardado |
+| Composición de API | Resultados, en `agr-gateway-or` | El gateway une los conteos de resultados con los nombres de candidatos |
+| Publish/Subscribe, dirigido por eventos | `agr-vote-lo` → `agr-broker-as` → resultados y auditoría | El voto se registra una vez y quien lo necesita se entera por un evento |
+| CQRS ligero | Escritura en MongoDB, lectura en Redis | Los resultados se leen sin recalcular nada |
+| Outbox | `agr-vote-lo` | Ningún voto guardado se queda sin publicar |
+| Consumidor idempotente | `agr-results-lo`, `agr-audit-lo` | Un evento repetido no se cuenta dos veces |
+| Cliente-servidor y SSR | `agr-web-fr` | El HTML se genera en el servidor de Next.js |
+| Capas | Sistema completo y dentro de cada servicio | Presentación → orquestación → lógica → datos y mensajería |
 
-Decisiones de diseño:
+### 2.3 Reglas de diseño
 
-- **Una base de datos por servicio, ninguna compartida.** Cada servicio es dueño de sus datos y los demás solo
-  los ven a través de su API.
-- **Identidad y voto separados.** Quién votó vive en PostgreSQL (`agr-voters-db`) y qué se votó vive en MongoDB
-  (`agr-votes-db`). El voto no guarda ningún dato del votante, así que el anonimato depende de esa separación.
-- **Dos tipos de conector HTTP:** REST (entre servicios y para votar) y GraphQL (el front-end consulta las
-  elecciones con sus candidatos anidados en una sola petición). Los conectores a las bases de datos
-  (*Database connector*) no son HTTP: usan el protocolo de cada base.
-- **Ningún servicio comparte código con otro.** Se hablan solo por los contratos de la sección 6.
-- **`agr-vote-lo` coordina el voto** y es el único servicio que llama a otros dos. `agr-voter-lo` y
-  `agr-election-lo` no se llaman entre sí.
+- **Los servicios de lógica nunca se llaman entre sí.** Cuando un flujo necesita a varios, lo coordina
+  `agr-gateway-or` (llamadas síncronas) o se comunican por eventos a través de `agr-broker-as`.
+- **Una base de datos por servicio, ninguna compartida.** Los demás solo ven esos datos a través de la API del
+  dueño.
+- **Identidad, participación y voto separados.** Quién es el votante vive en `agr-auth-db`; en qué elecciones ya
+  votó vive en `agr-voters-db`; qué se votó vive en `agr-votes-db`. Ningún dato une un voto con un votante.
+- **Solo dos puertas hacia afuera:** el web (3000) y el gateway (8080). Los servicios y las bases no publican
+  puertos.
+- **Ningún servicio comparte código con otro.** Se hablan solo por los contratos de la sección 5.
+
+**Convención de nombres.** `agr-<nombre>-<nivel>`: `-fr` presentación, `-or` orquestación, `-lo` lógica, `-as`
+asincronía y `-db` datos. En el Prototipo 2 **el componente, la carpeta del repositorio, el servicio de Docker
+Compose y el contenedor se llaman igual**. Así, `docker compose logs agr-vote-lo`, `docker ps` y las URLs internas
+(`http://agr-vote-lo:8002`) usan el mismo nombre que la vista C&C.
 
 ## 3. Cómo ejecutarlo
 
-Requisitos: Git y Docker Desktop abierto y con el motor corriendo. Los puertos `3000`, `8000`, `8001`, `8002` y
-`5432` de tu equipo deben estar libres.
+Requisitos: Git y Docker Desktop abierto con el motor corriendo. Los puertos `3000`, `8080` y `15672` de tu equipo
+deben estar libres.
 
 ```bash
 git clone https://github.com/Cam152/ArquiSoft.git
 cd ArquiSoft
-docker compose up --build
+docker compose up --build -d --wait
+docker compose ps
 ```
 
-La primera vez descarga imágenes y compila cuatro servicios (la compilación de Java es la más lenta), así que
-puede tardar varios minutos. El sistema está listo cuando los siete contenedores aparecen en `docker compose ps`
-y los seis que tienen *healthcheck* dicen `healthy` (el front-end no tiene, solo dice `Up`).
+La primera vez descarga imágenes y compila ocho componentes (Java, Rust y .NET son los más lentos), así que puede
+tardar varios minutos. El sistema está listo cuando todos los contenedores con *healthcheck* dicen `healthy`.
 
 | Qué | URL |
 |---|---|
-| Front-end | http://localhost:3000 |
-| Election Service, Swagger (REST) | http://localhost:8000/docs |
-| Election Service, GraphiQL (GraphQL) | http://localhost:8000/graphql |
-| Election Service, health check | http://localhost:8000/health |
-| Voter Service, health check | http://localhost:8001/health |
-| Vote Service, health check | http://localhost:8002/health |
-| Vote Service, resultados de la elección 1 | http://localhost:8002/results/1 |
+| Web (SSR) | http://localhost:3000 |
+| Gateway, health check | http://localhost:8080/health |
+| Gateway, resultados de la elección 1 | http://localhost:8080/results/1 |
+| Gateway, GraphQL | http://localhost:8080/graphql |
+| Consola de RabbitMQ (colas y mensajes) | http://localhost:15672 (usuario y clave de `BROKER_USER` y `BROKER_PASSWORD`) |
 
 **Datos de ejemplo** (se cargan solos la primera vez):
 
 | Qué | Valor |
 |---|---|
-| Votantes | documentos `1000000001` a `1000000005`, clave `voter123` |
+| Votantes | Documentos `1000000001` a `1000000005`, clave `voter123` |
 | Elección `1` | "Elección de representante estudiantil 2026", abierta, 3 candidatos |
 | Elección `2` | "Consulta sobre el horario de laboratorios", en borrador, 2 candidatos |
 | Elección `3` | "Elección de monitores 2025-II", cerrada, 2 candidatos |
-| Llave de administración | `dev-admin-key` (header `X-API-Key`, solo para crear o cambiar elecciones) |
+| Llave de administración | `dev-admin-key` (`ADMIN_API_KEY`) |
 
-Cada votante puede votar **una sola vez en total**, no una vez por elección (ver sección 11). Con cinco votantes
-de ejemplo, para repetir la demostración hay que reiniciar los datos (`docker compose down -v`).
+Cada votante puede votar **una vez en cada elección**. Para repetir la demostración con los mismos votantes,
+reinicien los datos con `docker compose down -v`.
+
+**Consola de administración.** La CLI no arranca con `up`; se ejecuta bajo demanda:
+
+```bash
+docker compose run --rm agr-admin-fr elections list
+docker compose run --rm agr-admin-fr elections create --name "Elección 2026" --description "Prueba"
+docker compose run --rm agr-admin-fr candidates add --election 4 --name "Ana Torres"
+docker compose run --rm agr-admin-fr candidates add --election 4 --name "Luis Herrera"
+docker compose run --rm agr-admin-fr elections open 4
+docker compose run --rm agr-admin-fr results show 4
+docker compose run --rm agr-admin-fr audit list --election 4
+```
+
+Todos los comandos están en la sección 4.2.
 
 **Comandos útiles:**
 
 ```bash
-docker compose ps                    # estado de los contenedores
-docker compose logs -f vote-service  # logs de un servicio (usa el nombre del servicio, no el del contenedor)
-docker compose down                  # detiene el sistema y conserva los datos
-docker compose down -v               # detiene y borra los datos (vuelve a cargar los de ejemplo)
+docker compose ps                        # estado de los contenedores
+docker compose logs -f agr-gateway-or    # logs de un componente
+docker compose down                      # detiene el sistema y conserva los datos
+docker compose down -v                   # detiene y borra los datos (vuelve a cargar los de ejemplo)
+```
+
+**Puertos para depurar.** `docker-compose.yml` solo publica 3000, 8080 y 15672. Para entrar directo a un servicio
+(por ejemplo Swagger del Election Service en http://localhost:8000/docs) o a una base, cada integrante puede crear
+un `docker-compose.override.yml` local con los puertos que necesite. Docker Compose lo lee solo si existe, y no se
+sube al repositorio:
+
+```yaml
+services:
+  agr-election-lo:
+    ports: ["8000:8000"]
+  agr-voters-db:
+    ports: ["5433:5432"]
 ```
 
 **Problemas frecuentes:**
 
 - `error during connect ... dockerDesktopLinuxEngine`: Docker Desktop está cerrado. Ábranlo y esperen a que diga
   "Engine running".
-- `port is already allocated` o `address already in use`: otro programa usa uno de los puertos. El más común es
-  PostgreSQL local en el `5432`. Ciérrenlo o pongan `VOTERS_DB_PORT=5433` en un archivo `.env`.
+- `port is already allocated`: otro programa usa el 3000, el 8080 o el 15672. Ciérrenlo o cambien el puerto
+  publicado en un `docker-compose.override.yml`.
+- En Windows PowerShell, `curl` es un alias de otra cosa: usen `curl.exe`.
 - Si la compilación se corta por la red, vuelvan a ejecutar `docker compose up --build`: lo ya descargado queda en
   caché.
 
 ## 4. Cómo funciona cada componente
 
-### 4.1 Election Service (Python): `agr-election-lo`
+Todos los servicios de lógica siguen las mismas convenciones:
 
-Gestiona elecciones y candidatos. Está en `election-service/` y escucha en el puerto 8000.
+- `GET /health` responde `200 {"status": "ok"}` y es lo que usa el *healthcheck* del compose.
+- Errores siempre en JSON `{"detail": "mensaje"}`.
+- Configuración solo por variables de entorno y logs a la salida estándar.
+- Mismas capas internas: `handler` o `controller` (HTTP) → `service` (reglas de negocio) → `repository` (base de
+  datos), más `client`, `publisher` o `consumer` cuando hablan con el broker.
 
-**Capas del código** (`app/`):
+### 4.1 Web: `agr-web-fr` (TypeScript, Next.js con SSR)
 
-| Archivo | Responsabilidad |
+**Qué hace.** Es la interfaz del votante. Muestra las elecciones, permite iniciar sesión, votar y ver los
+resultados actualizándose solos.
+
+**Cómo lo hace.** Next.js genera cada página **en el servidor** (SSR): cuando el navegador pide `/`, el servidor de
+Next.js consulta al gateway por la red interna, arma el HTML con los datos y lo envía listo. El navegador recibe la
+página completa, sin pantallas de "cargando". Solo hay dos momentos en que el navegador habla directo con el
+gateway: al enviar el voto y al abrir el stream de resultados en vivo.
+
+| Ruta | Se genera en | Qué hace |
+|---|---|---|
+| `/` | Servidor | Lista las elecciones con su estado y candidatos (GraphQL al gateway) |
+| `/ingresar` | Cliente | Formulario de documento y clave; llama a `POST /auth/login` del gateway |
+| `/elecciones/[id]/votar` | Servidor + cliente | El servidor trae la elección y sus candidatos; el navegador envía `POST /votes` con el JWT |
+| `/elecciones/[id]/resultados` | Servidor + cliente | El servidor trae los resultados actuales; el navegador abre `GET /results/{id}/stream` (SSE) y actualiza las barras con cada evento |
+| `/api/health` | Servidor | *Healthcheck* del contenedor |
+
+**Detalles:**
+
+- **Dos URLs del gateway.** El servidor de Next.js usa `GATEWAY_INTERNAL_URL` (`http://agr-gateway-or:8080`, por la
+  red de Docker). El navegador usa `NEXT_PUBLIC_GATEWAY_URL` (`http://localhost:8080`).
+- **Sesión.** El JWT se guarda en `sessionStorage` y la sesión se cierra sola al vencer (1 hora). Las páginas que se
+  generan en el servidor no necesitan el token, porque elecciones y resultados son públicos.
+- **Resultados en vivo.** El SSE entrega solo los conteos por candidato; la página los combina con la lista de
+  candidatos que ya trajo al generarse.
+- **Mensajes al votante.** Igual que en el P1, un solo archivo (`lib/api.ts`) traduce cada código de respuesta a un
+  mensaje ("Ya votaste en esta elección", "La elección no está abierta", etc.).
+- **Imagen.** Se compila en `node:20-alpine` con `output: "standalone"` y corre `node server.js` en el puerto 3000.
+  Se reutilizan los componentes visuales del P1.
+
+### 4.2 CLI de administración: `agr-admin-fr` (Go, Cobra)
+
+**Qué hace.** Reemplaza el uso de Swagger: es la herramienta con la que quien administra crea, edita, abre y cierra
+elecciones, gestiona candidatos y consulta resultados y auditoría.
+
+**Cómo lo hace.** Es un programa de línea de comandos (`agora`). Cada comando arma una petición HTTP al gateway,
+agrega el header `X-API-Key` y muestra la respuesta como tabla en la terminal (`text/tabwriter`). Si el gateway
+responde un error, imprime el `detail` y termina con código de salida distinto de 0.
+
+| Comando | Petición al gateway |
 |---|---|
-| `main.py` | Crea la app FastAPI, CORS, manejadores de errores, `/health` y monta REST y GraphQL |
-| `routers/elections.py` | Endpoints REST (solo traducen HTTP a llamadas de `services`) |
-| `graphql_api.py` | Esquema GraphQL de solo lectura (Strawberry) |
-| `services.py` | Reglas de negocio, compartidas por REST y GraphQL |
-| `models.py` | Tablas SQLAlchemy: `elections` y `candidates` |
-| `schemas.py` | Validación de entrada y forma de las respuestas (Pydantic) |
-| `security.py` | Protección de escritura con `X-API-Key` |
-| `database.py` | Motor de base de datos, sesión por petición, espera a PostgreSQL |
-| `seed.py` | Carga las 3 elecciones de ejemplo |
-| `config.py` | Lee la configuración de variables de entorno |
-| `utils.py` | Utilidades de fechas (todo se compara en UTC) |
+| `elections list [--status active]` | `GET /elections` |
+| `elections show <id>` | `GET /elections/{id}` |
+| `elections create --name ... [--description ...] [--starts ... --ends ...]` | `POST /admin/elections` |
+| `elections update <id> [--name ...] [--description ...]` | `PATCH /admin/elections/{id}` |
+| `elections delete <id>` | `DELETE /admin/elections/{id}` |
+| `elections open <id>` | `POST /admin/elections/{id}/activate` |
+| `elections close <id>` | `POST /admin/elections/{id}/close` |
+| `candidates add --election <id> --name ... [--description ...]` | `POST /admin/elections/{id}/candidates` |
+| `candidates remove --election <id> --candidate <cid>` | `DELETE /admin/elections/{id}/candidates/{cid}` |
+| `results show <id>` | `GET /results/{id}` |
+| `audit list [--election <id>] [--limit 50]` | `GET /admin/audit` |
 
-**Cómo arranca:** al iniciar espera a que PostgreSQL responda (reintenta hasta 30 veces), crea las tablas si no
-existen y, si la base está vacía y `SEED_DATA=true`, carga los datos de ejemplo.
+**Configuración:** `AGORA_GATEWAY_URL` (en el compose, `http://agr-gateway-or:8080`; fuera de Docker,
+`http://localhost:8080`) y `AGORA_ADMIN_KEY` (toma el valor de `ADMIN_API_KEY`).
 
-**Reglas de negocio:**
+**Imagen y uso.** Se compila en `golang:1.23-alpine` y queda un binario en `alpine`. En el compose está en el perfil
+`tools`, así que `docker compose up` no lo arranca y se usa con `docker compose run --rm agr-admin-fr <comando>`.
 
-- Una elección tiene estado `draft` (borrador), `active` (abierta) o `closed` (cerrada).
-- Solo en `draft` se puede editar, eliminar la elección, agregar o quitar candidatos.
-- Para abrirla (`draft` a `active`) se necesitan al menos 2 candidatos.
-- Solo una elección `active` se puede cerrar.
-- `is_open` es verdadero si el estado es `active` y la fecha actual está dentro de `starts_at` y `ends_at` (si
-  existen).
-- Cada candidato recibe un número de tarjetón automático (1, 2, 3...). No se repite nombre dentro de una elección.
+### 4.3 Gateway: `agr-gateway-or` (TypeScript, Node.js)
 
-**Errores:** siempre JSON `{"detail": "mensaje"}`. `401` llave inválida, `404` no existe, `409` operación no
-válida para el estado actual, `422` datos inválidos.
+**Qué hace.** Es el único punto de entrada de la API y el orquestador del sistema. Enruta cada petición al servicio
+que corresponde, valida quién es el votante, protege la administración, ejecuta la saga del voto, une datos de
+varios servicios y reenvía el stream de resultados en vivo.
 
-**REST** (lectura pública, escritura con header `X-API-Key`, valor por defecto `dev-admin-key`):
+**Cómo lo hace:**
 
-| Método y ruta | Descripción | Llave |
-|---|---|---|
-| `GET /elections?status=active` | Lista elecciones (filtro opcional) | No |
-| `GET /elections/{id}` | Detalle con candidatos. Lo usa el Vote Service | No |
-| `GET /elections/{id}/candidates/{cid}` | Un candidato | No |
-| `POST /elections` | Crea una elección en borrador | Sí |
-| `PATCH /elections/{id}` | Edita nombre, descripción o fechas (solo borrador) | Sí |
-| `DELETE /elections/{id}` | Elimina (solo borrador) | Sí |
-| `POST /elections/{id}/candidates` | Agrega un candidato (solo borrador) | Sí |
-| `DELETE /elections/{id}/candidates/{cid}` | Quita un candidato (solo borrador) | Sí |
-| `POST /elections/{id}/activate` | Abre la elección | Sí |
-| `POST /elections/{id}/close` | Cierra la elección | Sí |
+- **Enrutamiento.** Cada ruta pública (sección 5.1) apunta a un servicio interno por la red `agr-back`
+  (`http://agr-election-lo:8000`, `http://agr-vote-lo:8002`, etc.). Biblioteca sugerida: Fastify.
+- **Autenticación del votante.** En las rutas que la exigen (`POST /votes`), el gateway llama a
+  `GET /auth/validate` de `agr-auth-lo` con el header `Authorization` recibido. Si la respuesta es 200, obtiene el
+  `voter_id`; si es 401, responde 401. El gateway no conoce el secreto del JWT.
+- **Administración.** En las rutas `/admin/*` compara `X-API-Key` con `ADMIN_API_KEY` (comparación de tiempo
+  constante) y reenvía la llave al Election Service, que también la verifica.
+- **Saga del voto.** `POST /votes` ejecuta los pasos de la sección 6.1: validar la elección, marcar la
+  participación, guardar el voto y compensar si el guardado falla.
+- **Composición de resultados.** `GET /results/{id}` pide los conteos a `agr-results-lo` y la elección a
+  `agr-election-lo`, y devuelve un solo JSON con nombres, ceros, porcentajes y orden (sección 5.1).
+- **SSE.** `GET /results/{id}/stream` abre el stream de `agr-results-lo` y lo reenvía al navegador evento por
+  evento, sin compresión ni *buffering* en esa ruta.
+- **Llamadas internas.** Todas tienen un tiempo máximo de 5 segundos; las que modifican datos llevan `X-Service-Key`.
+- **CORS.** Es el único componente que lo necesita: acepta el origen del web (`http://localhost:3000`, variable
+  `CORS_ORIGINS`).
+- **Logs sin datos sensibles.** Es el único componente que ve juntos el JWT y el candidato elegido, así que **nunca
+  registra el cuerpo de `POST /votes`** ni el header `Authorization`.
 
-Respuesta típica de `GET /elections/1` (los campos REST van en `snake_case`):
+**Estructura:** `routes/` (rutas públicas), `middleware/auth.ts` y `middleware/admin.ts`, `saga/vote.ts`,
+`compose/results.ts`, `sse/proxy.ts` y `clients/` (un cliente HTTP por servicio).
 
-```json
-{
-  "id": 1,
-  "name": "Elección de representante estudiantil 2026",
-  "status": "active",
-  "is_open": true,
-  "candidate_count": 3,
-  "candidates": [
-    {"id": 1, "election_id": 1, "number": 1, "name": "Ana Torres", "description": "..."}
-  ]
-}
-```
+### 4.4 Auth Service y Auth DB: `agr-auth-lo` (Java, Spring Boot) y `agr-auth-db` (PostgreSQL)
 
-**GraphQL** en `/graphql` (solo lectura, campos en `camelCase`). Lo usa el front-end porque permite pedir la
-elección con sus candidatos en una sola consulta y solo los campos necesarios:
+**Qué hace.** Es la única fuente de la identidad del votante: comprueba documento y clave, emite el JWT y lo valida
+cuando el gateway pregunta.
 
-```graphql
-{
-  elections(status: "active") {
-    id
-    name
-    isOpen
-    candidates { number name }
-  }
-}
-```
-
-**Pruebas:** desde `election-service/`, `pip install -r requirements-dev.txt` y luego `pytest`. Son 12 y usan
-SQLite en memoria, no necesitan Docker.
-
-### 4.2 Elections DB (PostgreSQL): `agr-elections-db`
-
-Dos tablas: `elections` (nombre, descripción, estado, fechas) y `candidates` (con llave foránea a `elections`,
-borrado en cascada y número único por elección). Los datos persisten en el volumen `elections-db-data`. El
-Election Service se conecta por SQLAlchemy y psycopg2 (*Database connector*). No se publica ningún puerto.
-
-### 4.3 Voter Service (Java): `agr-voter-lo`
-
-Autentica a los votantes y lleva el control de quién ya votó. Está en `voter-service/`, escucha en el puerto 8001 y
-es el único dueño de la Voters DB.
-
-**Estructura** (`src/main/java/com/arquisoft/voterservice/`):
-
-| Paquete | Clases | Responsabilidad |
-|---|---|---|
-| `controller` | `AuthController`, `VoterController`, `HealthController` | Capa HTTP: `/auth/login`, `/voters/mark-voted`, `/voters/unmark-voted`, `/health` |
-| `service` | `VoterService` | Buscar votantes y marcar o desmarcar (transaccional) |
-| `repository` | `VoterRepository` | Spring Data JPA con dos consultas de actualización |
-| `model` | `Voter` | Entidad de la tabla `voters` |
-| `dto` | `LoginRequest`, `LoginResponse` | Forma de la petición y la respuesta del login |
-| `security` | `JwtService`, `JwtAuthenticationFilter` | Firma y valida el JWT, y autentica cada petición |
-| `config` | `SecurityConfig`, `DataSeeder` | Reglas de acceso y CORS; carga de los 5 votantes de ejemplo |
-
-**Cómo funciona lo importante:**
+**Cómo lo hace.** Toma el login del Voter Service del P1 y lo convierte en un servicio propio:
 
 - **Login.** Busca al votante por `document` y compara la clave con `BCryptPasswordEncoder.matches`. Si coincide,
-  firma un JWT HS256 (biblioteca `jjwt`) con `sub` igual al id del votante y vencimiento de 1 hora. Si no, responde
-  `401 {"detail": "Documento o clave incorrectos"}` sin decir cuál de los dos falló.
-- **Seguridad.** La API es sin sesión (*stateless*): `/health` y `/auth/login` son públicos y todo lo demás exige
-  `Authorization: Bearer <jwt>`. `JwtAuthenticationFilter` lee el header, valida la firma y la expiración y deja al
-  votante autenticado para esa petición.
-- **Marcar como votado es atómico.** Es lo que impide votar dos veces aunque lleguen dos peticiones a la vez:
+  firma un JWT HS256 (biblioteca `jjwt`) con `sub` igual al `id` del votante y vencimiento de 1 hora. Si no,
+  responde `401 {"detail": "Documento o clave incorrectos"}` sin decir cuál de los dos falló.
+- **Validación.** `GET /auth/validate` lee el header `Authorization: Bearer <jwt>`, verifica firma y vencimiento y
+  responde `200 {"voter_id": 1}`. Si el token es inválido o venció, responde
+  `401 {"detail": "Token inválido o expirado"}`. Spring Security tiene un `AuthenticationEntryPoint` propio para que
+  ese caso sea 401 con JSON y no 403.
+- **Seguridad.** Sin sesión (*stateless*). `/health` y `/auth/login` son públicos; `/auth/validate` exige el token.
+  Solo este servicio conoce `JWT_SECRET`.
+- **Votantes de ejemplo.** Un `DataSeeder` crea los 5 votantes si la tabla está vacía, con la clave guardada con
+  BCrypt.
 
-  ```java
-  @Modifying
-  @Query("UPDATE Voter v SET v.hasVoted = true WHERE v.id = :id AND v.hasVoted = false")
-  int markVoted(@Param("id") Long id);   // 1 = marcado, 0 = ya había votado
-  ```
+**Datos (`agr-auth-db`):** tabla `voters(id, document UNIQUE, name, password_hash)`. Volumen `auth-db-data`.
 
-  Si devuelve `0`, el endpoint responde `409 {"detail": "El votante ya votó"}`.
-- **`unmark-voted`** es la compensación del Vote Service (sección 7): pone `has_voted` en `false` y es idempotente.
-- **Llave de servicio.** `mark-voted` y `unmark-voted` exigen además el header `X-Service-Key` igual a
-  `SERVICE_API_KEY`. Sin eso, un votante podría llamar a `unmark-voted` con su propio token y votar otra vez.
-- **Votantes de ejemplo.** `DataSeeder` (un `CommandLineRunner`) crea 5 votantes si la tabla está vacía, con la
-  clave `voter123` guardada con BCrypt. No hay hashes pegados en ningún SQL.
-- **CORS.** Acepta el origen `http://localhost:3000` y los headers `Authorization`, `Content-Type` y
-  `X-Service-Key` (ver sección 11).
-- **Dockerfile.** Dos etapas: se compila con `maven:3.9-eclipse-temurin-21` y se ejecuta en
-  `eclipse-temurin:21-jre-alpine`. Lee `DB_URL`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET` y `SERVICE_API_KEY` de
-  variables de entorno (`application.properties`) y crea la tabla sola (`ddl-auto=update`).
+**Puerto interno:** 8003. **Imagen:** compila con `maven:3.9-eclipse-temurin-21` y corre en
+`eclipse-temurin:21-jre-alpine`.
 
-**Cómo probarlo** (en PowerShell guarden el JSON en un archivo y usen `curl.exe -d "@login.json"`):
+### 4.5 Voter Service y Voters DB: `agr-voter-lo` (Java, Spring Boot) y `agr-voters-db` (PostgreSQL)
 
-```bash
-curl http://localhost:8001/health
-curl -X POST http://localhost:8001/auth/login -H "Content-Type: application/json" \
-  -d '{"document": "1000000001", "password": "voter123"}'
+**Qué hace.** Registra **en qué elecciones ya votó cada votante**. Es la pieza que impide el doble voto.
+
+**Cómo lo hace.** Ya no tiene lista de votantes ni claves (eso pasó a `agr-auth-lo`). Usa como `voter_id` el que el
+gateway obtuvo del JWT, así que no hay que sincronizar votantes entre dos bases:
+
+```sql
+CREATE TABLE ballots_cast (
+  voter_id    BIGINT NOT NULL,   -- "sub" del JWT que emite agr-auth-lo
+  election_id BIGINT NOT NULL,
+  PRIMARY KEY (voter_id, election_id)
+);
 ```
 
-**Pruebas:** `VoterServiceApplicationTests` comprueba que la aplicación arranca contra PostgreSQL, así que
-necesita la base. El arranque sano del contenedor (`healthy`) cubre lo mismo. El resto del servicio se prueba por
-HTTP con `scripts/smoke_test.py`.
+- **`mark-voted`** hace `INSERT ... ON CONFLICT DO NOTHING` y mira cuántas filas insertó: 1 significa que quedó
+  marcado (200); 0 significa que ya había votado en esa elección (409). Es atómico aunque lleguen dos peticiones al
+  mismo tiempo, porque la llave primaria no deja insertar dos veces.
+- **`unmark-voted`** hace `DELETE` de esa fila. Es la compensación de la saga y es idempotente: borrar algo que no
+  existe también responde 200.
+- **Llave de servicio.** Ambos endpoints exigen `X-Service-Key` igual a `SERVICE_API_KEY`; solo el gateway la tiene.
+- La tabla **no guarda fecha ni hora**: ese dato permitiría cruzar la participación con el voto.
 
-### 4.4 Voters DB (PostgreSQL): `agr-voters-db`
+**Datos (`agr-voters-db`):** tabla `ballots_cast`. Volumen `voters-db-data`. **Puerto interno:** 8001.
 
-Una tabla, `voters`, que Hibernate crea al arrancar el Voter Service:
+### 4.6 Election Service y Elections DB: `agr-election-lo` (Python, FastAPI) y `agr-elections-db` (PostgreSQL)
 
-| Columna | Tipo | Detalle |
+**Qué hace.** Gestiona elecciones y candidatos: sus estados, sus reglas y su consulta por REST y GraphQL.
+
+**Cómo lo hace.** Es el mismo servicio del P1; solo cambia que ahora lo llama únicamente el gateway.
+
+- **Capas** (`app/`): `routers/` (REST), `graphql_api.py` (GraphQL de solo lectura con Strawberry), `services.py`
+  (reglas de negocio, compartidas por REST y GraphQL), `models.py` (SQLAlchemy), `schemas.py` (validación con
+  Pydantic) y `security.py` (`X-API-Key`).
+- **Reglas:** una elección está en `draft`, `active` o `closed`. Solo en borrador se edita, se elimina o se cambian
+  candidatos; para abrirla hacen falta al menos 2 candidatos; solo una elección activa se puede cerrar. `is_open` es
+  verdadero si está activa y la fecha actual cae dentro de `starts_at` y `ends_at`. Cada candidato recibe un número
+  de tarjetón automático.
+- **Arranque:** espera a PostgreSQL, crea las tablas y, si la base está vacía y `SEED_DATA=true`, carga las 3
+  elecciones de ejemplo.
+
+**Datos (`agr-elections-db`):** tablas `elections` y `candidates` (llave foránea con borrado en cascada y número
+único por elección). Volumen `elections-db-data`. **Puerto interno:** 8000. Swagger en `/docs` (solo con el
+puerto publicado en un *override*).
+
+### 4.7 Vote Service y Votes DB: `agr-vote-lo` (Go) y `agr-votes-db` (MongoDB)
+
+**Qué hace.** Guarda el voto anónimo y avisa al resto del sistema publicando el evento `VoteRegistered`.
+
+**Cómo lo hace.** Ya no valida elecciones ni marca votantes (eso lo hace la saga del gateway) ni calcula resultados
+(eso pasó a `agr-results-lo`):
+
+- **Guardado idempotente.** `POST /votes` recibe `{election_id, candidate_id, candidate_name}` y el header
+  `Idempotency-Key`. Inserta el voto con esa llave, que tiene un índice único. Si la llave ya existía (el gateway
+  reintentó), responde 201 sin duplicar el voto.
+- **Outbox.** El voto se guarda con `published: false`. Después de responder, una *goroutine* publica el evento en
+  `agr-broker-as` con confirmación del broker y marca `published: true`. Otra *goroutine* revisa cada 5 segundos los
+  votos que sigan en `false` y los vuelve a publicar, así que si RabbitMQ falla un momento, el evento sale cuando se
+  recupere.
+- **Anonimato.** El voto no lleva nada del votante. `cast_at` se redondea a la hora. La `Idempotency-Key` es un
+  identificador aleatorio que genera el gateway y no se deriva del votante.
+- **Capas** (`internal/`): `handler`, `service`, `repository`, `publisher` y `outbox`. Biblioteca AMQP sugerida:
+  `amqp091-go`.
+
+**Datos (`agr-votes-db`):** colección `votes`
+`{_id, election_id, candidate_id, candidate_name, cast_at, published, idempotency_key}`, con índice único en
+`idempotency_key` e índice en `published`. Volumen `votes-db-data`. **Puerto interno:** 8002.
+
+### 4.8 Broker: `agr-broker-as` (RabbitMQ)
+
+**Qué hace.** Es el componente de procesos asíncronos: recibe cada `VoteRegistered` y lo entrega a todos los que lo
+necesitan, aunque en ese momento estén caídos.
+
+**Cómo lo hace.** La topología se declara en `agr-broker-as/definitions.json` y RabbitMQ la carga al arrancar, así
+nadie crea colas a mano:
+
+| Elemento | Configuración | Para qué |
 |---|---|---|
-| `id` | bigint | Llave primaria autoincremental |
-| `document` | texto | Único; es el usuario del login |
-| `name` | texto | Nombre del votante |
-| `password_hash` | texto | Hash BCrypt de la clave |
-| `has_voted` | booleano | `false` por defecto; lo cambian `mark-voted` y `unmark-voted` |
+| Exchange `agora.votes` | Tipo `fanout`, durable | Copia cada evento a todas sus colas |
+| Cola `results.vote-registered` | `quorum`, `x-delivery-limit: 5`, *dead-letter* a `agora.dlx` | Eventos para `agr-results-lo` |
+| Cola `audit.vote-registered` | `quorum`, `x-delivery-limit: 5`, *dead-letter* a `agora.dlx` | Eventos para `agr-audit-lo` |
+| Exchange `agora.dlx` y colas `results.dead`, `audit.dead` | Durables | Guardan los mensajes que fallaron 5 veces, para revisarlos |
 
-No hay ninguna columna con la fecha o la hora del voto: un dato así permitiría cruzarlo con el voto y romper el
-anonimato. Los datos persisten en el volumen `voters-db-data`. Este es el único contenedor de base de datos que
-publica su puerto (`5432`), pensado para consultarlo mientras se desarrolla:
+- Los mensajes se publican como **persistentes** y con **confirmación del broker**: sobreviven a un reinicio.
+- Los consumidores usan ***ack* manual**: un mensaje solo se borra cuando el consumidor terminó de procesarlo. Si el
+  consumidor cae a mitad, RabbitMQ lo reentrega.
+- RabbitMQ garantiza entrega **al menos una vez**; por eso los consumidores descartan eventos repetidos.
+- Para agregar otro consumidor basta con crear una cola nueva enlazada a `agora.votes`, sin tocar `agr-vote-lo`.
 
-```bash
-docker compose exec voters-db psql -U voters -d voters -c "select id, document, name, has_voted from voters"
-```
+**Imagen:** `rabbitmq:3-management-alpine`, volumen `broker-data`, puerto AMQP 5672 interno y consola web en 15672.
 
-### 4.5 Vote Service (Go): `agr-vote-lo`
+### 4.9 Results Service y Results DB: `agr-results-lo` (Rust) y `agr-results-db` (Redis)
 
-Recibe el voto, lo valida con los otros dos servicios, guarda el voto anónimo y calcula resultados. Está en
-`vote-service/` y escucha en el puerto 8002. Es el único dueño de la Votes DB.
+**Qué hace.** Mantiene el conteo de votos de cada elección, lo sirve al instante y avisa en vivo cada vez que cambia.
 
-**Estructura:** por capas, en `vote-service/internal/`. Cada capa solo depende de la que tiene debajo
-(handler, service, repository y client).
+**Cómo lo hace:**
 
-| Paquete | Responsabilidad |
-|---|---|
-| `main.go` | Arranque: configuración, conexión a MongoDB, armado de las capas, servidor HTTP y apagado ordenado |
-| `internal/handler` | Capa HTTP: rutas (`net/http`), `POST /votes`, `GET /results/{election_id}`, `/health` y el middleware de CORS |
-| `internal/service` | Capa de lógica: flujo de votación, compensación y cálculo de resultados |
-| `internal/repository` | Capa de datos: colecciones `votes` y `audit` de MongoDB, índice y agregación de resultados |
-| `internal/client` | Conector REST hacia el Election Service y el Voter Service (timeout de 5 segundos) |
-| `internal/model` | Tipos del dominio que comparten las capas |
-| `internal/config` | Lee la configuración de variables de entorno |
-| `Dockerfile` | Compila el binario en `golang:1.23-alpine` y lo ejecuta en `alpine:3.20` |
+- **Consumo sin contar dos veces.** Se suscribe a `results.vote-registered`. Por cada evento ejecuta en Redis un
+  script Lua atómico: `SADD results:{election_id}:seen {event_id}` y, solo si el evento es nuevo,
+  `HINCRBY results:{election_id} {candidate_id} 1`. Después confirma el mensaje (*ack*).
+- **Consulta.** `GET /results/{election_id}` lee el hash con `HGETALL` y responde los conteos. No conoce nombres de
+  candidatos; el gateway los agrega (sección 5.1).
+- **Resultados en vivo.** `GET /results/{election_id}/stream` abre un canal SSE. Al conectarse envía los conteos
+  actuales, y luego un evento `counts` cada vez que el consumidor suma un voto en esa elección, más un comentario
+  cada 15 segundos para mantener viva la conexión. Internamente usa un canal de difusión por elección.
+- **Bibliotecas sugeridas:** `axum` (HTTP y SSE), `lapin` (AMQP), `redis` y `tokio`.
 
-**Cómo arranca:** espera a que MongoDB responda (reintenta hasta 30 veces), crea el índice
-`{election_id: 1, candidate_id: 1}` sobre `votes` y empieza a escuchar.
+**Datos (`agr-results-db`):** `results:{election_id}` (hash candidato → votos) y `results:{election_id}:seen`
+(conjunto de eventos ya contados). Redis guarda en disco (`appendonly yes`) sobre el volumen `results-db-data`, así
+que los conteos sobreviven a un reinicio. **Puerto interno:** 8004.
 
-**Endpoints** (contrato completo en la sección 6.2):
+### 4.10 Audit Service y Audit DB: `agr-audit-lo` (C#, .NET) y `agr-audit-db` (MongoDB)
 
-| Método y ruta | Descripción |
-|---|---|
-| `GET /health` | `200 {"status": "ok"}` |
-| `POST /votes` | Registra un voto. Requiere `Authorization: Bearer <jwt>` |
-| `GET /results/{election_id}` | Conteo y porcentaje por candidato (público) |
+**Qué hace.** Guarda un registro inmutable de todo lo que pasó en las votaciones, sin datos del votante, y lo deja
+consultar a quien administra.
 
-**Orden de `POST /votes`** (el orden importa, ver sección 7):
+**Cómo lo hace:**
 
-1. Valida el cuerpo (`election_id` y `candidate_id` enteros) y que venga el header `Authorization`.
-2. `GET {ELECTION_SERVICE_URL}/elections/{id}`: si no existe, 404; si `is_open` es falso, 409; si el candidato no
-   está en `candidates`, 422. Se hace antes de marcar para no dejar votantes marcados por una elección cerrada.
-3. `POST {VOTER_SERVICE_URL}/voters/mark-voted` reenviando el `Authorization` del cliente y agregando
-   `X-Service-Key`. Si responde 401 o 409, se devuelve lo mismo al cliente. Cualquier otra respuesta se trata como
-   servicio no disponible (502).
-4. Inserta el voto en `votes`, con `candidate_name` tomado de la respuesta del paso 2.
-5. Si el paso 4 falla, llama a `POST /voters/unmark-voted` (compensación) y responde 500.
-6. Registra el evento en `audit`. Si falla, solo queda en el log; no se deshace el voto.
-7. Responde `201 {"status": "recorded"}`.
+- **Consumo.** Un `BackgroundService` de .NET se suscribe a `audit.vote-registered` (biblioteca `RabbitMQ.Client`) e
+  inserta cada evento en MongoDB (`MongoDB.Driver`). `event_id` tiene índice único: si el evento llega repetido, la
+  inserción falla por duplicado, se toma como éxito y se confirma el mensaje.
+- **Inmutable.** El servicio solo inserta y consulta; no tiene endpoints para editar ni borrar.
+- **Consulta.** `GET /audit/events?election_id=1&limit=50` devuelve los eventos más recientes, y
+  `GET /audit/summary/{election_id}` el total de eventos de una elección. El gateway los expone en
+  `GET /admin/audit` con la llave de administración.
+- **Capas:** `Consumers/`, `Services/`, `Repositories/` y `Controllers/` (ASP.NET Core).
 
-Si el Election Service o el Voter Service no responden, devuelve `502`. El Vote Service no necesita al Voter
-Service para arrancar: solo lo llama cuando llega un voto.
+**Datos (`agr-audit-db`):** colección `events {event_id, type, election_id, occurred_at, recorded_at}`. Ambas horas
+se redondean a la hora. Volumen `audit-db-data`. **Puerto interno:** 8005.
 
-**Resultados:** una agregación `$group` por `candidate_id` cuenta los votos. Luego se completa con la lista de
-candidatos de `GET /elections/{id}` para que aparezcan los que tienen 0 votos, se calcula el porcentaje (2
-decimales) y se ordena de más a menos votos.
-
-**Cómo ejecutarlo y probarlo:**
-
-```bash
-docker compose up --build vote-service     # solo el Vote Service y lo que necesita (votes-db, election-service y elections-db)
-docker compose logs -f vote-service        # sus logs
-
-curl http://localhost:8002/health
-curl http://localhost:8002/results/1
-
-# Votar (el token sale de POST /auth/login del Voter Service)
-curl -i -X POST http://localhost:8002/votes \
-  -H "Authorization: Bearer <jwt>" \
-  -H "Content-Type: application/json" \
-  -d '{"election_id": 1, "candidate_id": 2}'
-
-# Ver los votos guardados (no llevan datos del votante)
-docker compose exec votes-db mongosh votes --eval "db.votes.find()"
-```
-
-Para votar con solo el Vote Service arriba falta el Voter Service: `POST /votes` responde
-`502 {"detail": "El Voter Service no responde"}`.
-
-**Pruebas:** no hace falta instalar Go, se corren en un contenedor. Desde `vote-service/`:
-
-```bash
-docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine go test ./...
-```
-
-En PowerShell: `docker run --rm -v "${PWD}:/src" -w /src golang:1.23-alpine go test ./...`. Con Go 1.23 o superior
-instalado basta `go test ./...`. Las 13 pruebas unitarias simulan MongoDB, el Election Service y el Voter Service,
-así que no necesitan el compose. Las 8 de punta a punta (`e2e/`) levantan el sistema con un Voter Service simulado:
-`./vote-service/e2e/run.sh` (ver `PRUEBAS.md`). Si cambian dependencias, corran `go mod tidy` y suban `go.mod` y
-`go.sum`.
-
-### 4.6 Votes DB (MongoDB): `agr-votes-db`
-
-Base `votes` con dos colecciones. Los datos persisten en el volumen `votes-db-data`. No se publica ningún puerto:
-solo el Vote Service la ve, por la red de Compose.
-
-- `votes`: `{election_id, candidate_id, candidate_name, cast_at}`. No lleva nada del votante. `cast_at` se redondea
-  a la hora para que no se pueda cruzar con el momento exacto en que alguien fue marcado.
-- `audit`: eventos `{type: "vote_registered", election_id, at}`. Tampoco lleva datos del votante, y `at` se
-  redondea igual que `cast_at`.
-
-### 4.7 Front-end (TypeScript, React): `agr-frontend-fr`
-
-Está en `frontend/` (su propia guía, más detallada, es [`frontend/README.md`](frontend/README.md)). Es una
-aplicación de una sola página (React 18, `react-router-dom` 6, Vite 5, TypeScript) que corre en el navegador y
-llama directamente a los tres servicios.
-
-**Pantallas:**
-
-| Ruta | Página | Qué hace |
-|---|---|---|
-| `/` | `ElectionsPage` | Lista las elecciones (GraphQL) con estado y candidatos. "Votar" si está abierta y hay sesión; "Ingresa para votar" si no hay sesión; "Ver resultados" si no es borrador |
-| `/ingresar` | `LoginPage` | Documento y clave; llama a `POST /auth/login`. Después vuelve a donde se venía |
-| `/elecciones/:id/votar` | `VotePage` | Protegida. Elegir candidato, confirmar y enviar `POST /votes` |
-| `/elecciones/:id/resultados` | `ResultsPage` | Barras y porcentajes de `GET /results/{id}`, con botón "Actualizar" |
-
-**Cómo está organizado** (`frontend/src/`):
-
-| Carpeta o archivo | Responsabilidad |
-|---|---|
-| `services/api.ts` | Único lugar que hace `fetch`: `fetchElections` (GraphQL), `login`, `castVote`, `fetchResults`, y la clase `ApiError` |
-| `context/AuthContext.tsx` | Sesión del votante (`token`, `document`, `expiresAt`). Se guarda en `sessionStorage` y se cierra sola al vencer el token |
-| `components/` | `Layout`, `RequireAuth` (manda al login si no hay sesión), `Notice`, `StatusBadge` |
-| `hooks/useAsync.ts` | Estados de carga, éxito y error de cada consulta |
-| `pages/` | Las cuatro pantallas |
-
-**Qué ve el votante según la respuesta del servidor** (los mensajes salen de `services/api.ts`):
-
-| Respuesta | Mensaje |
-|---|---|
-| `201` | "Voto registrado. Tu voto quedó guardado de forma anónima." |
-| `401` | Vuelve al login con el aviso "Tu sesión expiró" y regresa a la votación al ingresar |
-| `404` | "La elección no existe." |
-| `409` (ya votó) | "Ya votaste. Cada votante puede votar una sola vez." |
-| `409` (otro) | "La elección no está abierta." |
-| `422` | "El candidato no pertenece a esta elección. Recarga la página e inténtalo de nuevo." |
-| `500` | "No se pudo guardar tu voto y no quedó registrado. Puedes intentarlo de nuevo." |
-| `502` | "El sistema de votación no puede validar tu voto en este momento. Intenta de nuevo en unos minutos." |
-| Sin respuesta | "No se pudo conectar con el servidor. Revisa que los servicios estén en ejecución." |
-
-**Cómo se construye y se sirve:**
-
-- `npm run build` ejecuta `tsc --noEmit && vite build`: si hay un error de tipos, la imagen de Docker no se
-  construye. Por eso un build exitoso también es una comprobación de tipos.
-- El `Dockerfile` compila en `node:20-alpine` y sirve los archivos estáticos con `nginx:1.27-alpine`.
-  `nginx.conf` redirige todo a `index.html` (`try_files`), para que recargar `/elecciones/1/votar` no dé 404.
-- Las URLs de los servicios se fijan al compilar con `VITE_ELECTION_API_URL`, `VITE_VOTER_API_URL` y
-  `VITE_VOTE_API_URL`. Son las URLs que ve el navegador, por eso son `http://localhost:8000`, `:8001` y `:8002` y
-  no el nombre del contenedor. Si se cambian, hay que reconstruir la imagen (`docker compose up --build`).
-- El navegador llama directo a los servicios, así que cada uno permite el origen `http://localhost:3000` con CORS
-  (sección 6.4).
-
-### 4.8 Docker Compose y vista de despliegue
-
-`docker-compose.yml` define los siete servicios. Todos corren en una misma red de Compose y se llaman por el
-nombre del servicio y el puerto interno (por ejemplo `http://election-service:8000`). Desde el navegador se usa
-`localhost` y el puerto publicado. Es la confusión más común: servicio a servicio usa el nombre del servicio, el
-navegador usa `localhost`.
+### 4.11 Docker Compose y despliegue
 
 ```mermaid
 flowchart LR
-  user(["Navegador<br/>del votante"])
+  user(["Navegador y terminal<br/>del usuario"])
   subgraph HOST["Equipo anfitrión: Docker Desktop / Docker Compose"]
-    subgraph NET["Red de Compose"]
-      FRc["agr-frontend-fr<br/>nginx :80"]
-      VSc["agr-voter-lo<br/>Java :8001"]
-      TSc["agr-vote-lo<br/>Go :8002"]
-      ESc["agr-election-lo<br/>Python :8000"]
-      VDBc[("agr-voters-db<br/>PostgreSQL :5432")]
-      TDBc[("agr-votes-db<br/>MongoDB :27017")]
-      EDBc[("agr-elections-db<br/>PostgreSQL :5432")]
+    subgraph NETF["Red agr-front"]
+      WEBc["agr-web-fr<br/>Node :3000"]
+      ADMc["agr-admin-fr<br/>binario Go (perfil tools)"]
+    end
+    GWc["agr-gateway-or<br/>Node :8080<br/>(agr-front y agr-back)"]
+    subgraph NETB["Red agr-back"]
+      AUc["agr-auth-lo<br/>Java :8003"]
+      VOc["agr-voter-lo<br/>Java :8001"]
+      ELc["agr-election-lo<br/>Python :8000"]
+      VTc["agr-vote-lo<br/>Go :8002"]
+      RSc["agr-results-lo<br/>Rust :8004"]
+      ADc["agr-audit-lo<br/>.NET :8005"]
+    end
+    subgraph NETD["Red agr-data"]
+      BRc[["agr-broker-as<br/>RabbitMQ :5672"]]
+      ADBc[("agr-auth-db<br/>PostgreSQL")]
+      VDBc[("agr-voters-db<br/>PostgreSQL")]
+      EDBc[("agr-elections-db<br/>PostgreSQL")]
+      TDBc[("agr-votes-db<br/>MongoDB")]
+      RDBc[("agr-results-db<br/>Redis")]
+      UDBc[("agr-audit-db<br/>MongoDB")]
     end
   end
-  user -- "localhost:3000" --> FRc
-  user -- "localhost:8001" --> VSc
-  user -- "localhost:8002" --> TSc
-  user -- "localhost:8000" --> ESc
-  TSc --> VSc
-  TSc --> ESc
-  VSc -.-> VDBc
-  TSc -.-> TDBc
-  ESc -.-> EDBc
+  user -- "localhost:3000" --> WEBc
+  user -- "localhost:8080" --> GWc
+  user -- "docker compose run" --> ADMc
+  WEBc --> GWc
+  ADMc --> GWc
+  GWc --> AUc
+  GWc --> VOc
+  GWc --> ELc
+  GWc --> VTc
+  GWc --> RSc
+  GWc --> ADc
+  VTc --> BRc
+  RSc --> BRc
+  ADc --> BRc
+  AUc -.-> ADBc
+  VOc -.-> VDBc
+  ELc -.-> EDBc
+  VTc -.-> TDBc
+  RSc -.-> RDBc
+  ADc -.-> UDBc
 ```
 
-| Contenedor | Imagen | Puerto (equipo a contenedor) | Volumen | Healthcheck | Espera a |
+| Red | Quién está | Para qué |
+|---|---|---|
+| `agr-front` | `agr-web-fr`, `agr-admin-fr`, `agr-gateway-or` | La presentación solo alcanza al gateway |
+| `agr-back` | `agr-gateway-or` y los 6 servicios de lógica | El gateway llega a los servicios |
+| `agr-data` | Los 6 servicios de lógica, las 6 bases y el broker | Cada servicio llega a su base y al broker |
+
+Ni la presentación ni el gateway alcanzan las bases. Dentro de `agr-data` la separación entre bases la dan las
+credenciales: cada servicio solo conoce las de la suya.
+
+| Contenedor | Imagen | Puerto publicado | Volumen | Healthcheck | Espera a |
 |---|---|---|---|---|---|
-| `agr-elections-db` | `postgres:16-alpine` | no se publica | `elections-db-data` | `pg_isready` | nada |
-| `agr-election-lo` | `./election-service` | `8000:8000` | ninguno | `GET /health` | `elections-db` |
-| `agr-voters-db` | `postgres:16-alpine` | `5432:5432` (`VOTERS_DB_PORT`) | `voters-db-data` | `pg_isready` | nada |
-| `agr-voter-lo` | `./voter-service` | `8001:8001` | ninguno | `GET /health` | `voters-db` |
-| `agr-votes-db` | `mongo:7` | no se publica | `votes-db-data` | `mongosh` (ping) | nada |
-| `agr-vote-lo` | `./vote-service` | `8002:8002` | ninguno | `GET /health` | `votes-db`, `election-service` |
-| `agr-frontend-fr` | `./frontend` | `3000:80` | ninguno | ninguno | los tres servicios de lógica |
+| `agr-web-fr` | `./agr-web-fr` | `3000:3000` | ninguno | `GET /api/health` | `agr-gateway-or` |
+| `agr-admin-fr` | `./agr-admin-fr` | no corre como servicio (perfil `tools`) | ninguno | no aplica | no aplica |
+| `agr-gateway-or` | `./agr-gateway-or` | `8080:8080` | ninguno | `GET /health` | los 6 servicios de lógica |
+| `agr-auth-lo` | `./agr-auth-lo` | no | ninguno | `GET /health` | `agr-auth-db` |
+| `agr-voter-lo` | `./agr-voter-lo` | no | ninguno | `GET /health` | `agr-voters-db` |
+| `agr-election-lo` | `./agr-election-lo` | no | ninguno | `GET /health` | `agr-elections-db` |
+| `agr-vote-lo` | `./agr-vote-lo` | no | ninguno | `GET /health` | `agr-votes-db`, `agr-broker-as` |
+| `agr-results-lo` | `./agr-results-lo` | no | ninguno | `GET /health` | `agr-results-db`, `agr-broker-as` |
+| `agr-audit-lo` | `./agr-audit-lo` | no | ninguno | `GET /health` | `agr-audit-db`, `agr-broker-as` |
+| `agr-broker-as` | `rabbitmq:3-management-alpine` | `15672:15672` | `broker-data` | `rabbitmq-diagnostics ping` | nada |
+| `agr-auth-db`, `agr-voters-db`, `agr-elections-db` | `postgres:16-alpine` | no | uno por base | `pg_isready` | nada |
+| `agr-votes-db`, `agr-audit-db` | `mongo:7` | no | uno por base | `mongosh` (ping) | nada |
+| `agr-results-db` | `redis:7-alpine` (`appendonly yes`) | no | `results-db-data` | `redis-cli ping` | nada |
 
-- `depends_on` con `condition: service_healthy`: cada servicio espera a que lo que necesita esté sano. El Vote
-  Service no espera al Voter Service porque solo lo usa al recibir un voto.
-- Los `container_name` (`agr-*`, los mismos nombres de la vista C&C) son fijos, así que no se pueden levantar dos copias del
-  sistema a la vez en el mismo equipo. Las pruebas de punta a punta quitan esos nombres para no chocar.
-- Los datos viven en tres volúmenes con nombre. `docker compose down` los conserva y `down -v` los borra.
+- `depends_on` con `condition: service_healthy`: cada componente espera a que lo que necesita esté sano.
+- Construcción en dos etapas en todos los servicios propios: la imagen final no lleva compiladores.
+- Los datos viven en volúmenes con nombre: `docker compose down` los conserva y `down -v` los borra.
 
-## 5. Contratos entre servicios
+## 5. Contratos entre componentes
 
-Convenciones comunes a todos los servicios:
+Convenciones comunes: JSON en `snake_case` en REST (GraphQL usa `camelCase`), errores como `{"detail": "mensaje"}`,
+token del votante en `Authorization: Bearer <jwt>`, llave de administración en `X-API-Key` y llave entre el gateway y
+los servicios en `X-Service-Key`.
 
-- JSON en `snake_case` en REST. Errores siempre como `{"detail": "mensaje"}`.
-- Todos exponen `GET /health` que responde `200 {"status": "ok"}`.
-- Configuración solo por variables de entorno; logs a la salida estándar.
-- El token del votante viaja en `Authorization: Bearer <jwt>`. Las llamadas internas que solo debe hacer otro
-  servicio llevan además `X-Service-Key: <SERVICE_API_KEY>`.
+### 5.1 API pública del gateway (puerto 8080)
 
-### 5.1 Voter Service (puerto 8001)
+Es la única API que usan el web y la CLI.
 
-`POST /auth/login`
+| Método y ruta | Quién la usa | Requiere | Va a |
+|---|---|---|---|
+| `GET /health` | Compose | nada | el gateway |
+| `POST /auth/login` | Web | nada | `agr-auth-lo` |
+| `POST /graphql` | Web (servidor) | nada | `agr-election-lo` (solo lectura) |
+| `GET /elections`, `GET /elections/{id}` | Web, CLI | nada | `agr-election-lo` |
+| `POST /votes` | Web (navegador) | JWT | Saga (sección 6.1) |
+| `GET /results/{id}` | Web, CLI | nada | `agr-results-lo` + `agr-election-lo` (composición) |
+| `GET /results/{id}/stream` | Web (navegador) | nada | `agr-results-lo` (SSE) |
+| `POST /admin/elections` | CLI | `X-API-Key` | `agr-election-lo` |
+| `PATCH`, `DELETE /admin/elections/{id}` | CLI | `X-API-Key` | `agr-election-lo` |
+| `POST /admin/elections/{id}/candidates` | CLI | `X-API-Key` | `agr-election-lo` |
+| `DELETE /admin/elections/{id}/candidates/{cid}` | CLI | `X-API-Key` | `agr-election-lo` |
+| `POST /admin/elections/{id}/activate`, `/close` | CLI | `X-API-Key` | `agr-election-lo` |
+| `GET /admin/audit?election_id=&limit=` | CLI | `X-API-Key` | `agr-audit-lo` |
+
+`POST /auth/login`:
 
 ```json
 // Petición
 {"document": "1000000001", "password": "voter123"}
 // 200
 {"access_token": "<jwt>", "token_type": "Bearer", "expires_in": 3600}
-// 401
-{"detail": "Documento o clave incorrectos"}
 ```
 
-`POST /voters/mark-voted` (headers `Authorization` y `X-Service-Key`, sin cuerpo)
-
-| Código | Cuándo | Cuerpo |
-|---|---|---|
-| 200 | Se marcó al votante | `{"status": "marked"}` |
-| 401 | Token inválido o expirado, o llave de servicio incorrecta | `{"detail": "..."}` |
-| 409 | El votante ya había votado | `{"detail": "El votante ya votó"}` |
-
-`POST /voters/unmark-voted` (mismos headers, sin cuerpo): revierte la marca. `200 {"status": "unmarked"}`,
-idempotente.
-
-### 5.2 Vote Service (puerto 8002)
-
-`POST /votes` (header `Authorization`)
+`POST /votes` (header `Authorization`):
 
 ```json
 // Petición
@@ -578,20 +615,12 @@ idempotente.
 {"status": "recorded"}
 ```
 
-| Código | Cuándo |
-|---|---|
-| 401 | Falta el header `Authorization`, o el token es inválido o expirado |
-| 404 | La elección no existe |
-| 409 | La elección no está abierta, o el votante ya votó |
-| 422 | El candidato no pertenece a la elección, o el cuerpo es inválido |
-| 502 | El Election Service o el Voter Service no responden |
-| 500 | Falló el guardado del voto (ya se compensó) |
-
-`GET /results/{election_id}` (público)
+`GET /results/{id}` (composición del gateway):
 
 ```json
 {
   "election_id": 1,
+  "election_name": "Elección de representante estudiantil 2026",
   "total_votes": 10,
   "results": [
     {"candidate_id": 2, "candidate_name": "Luis Herrera", "votes": 6, "percentage": 60.0},
@@ -601,123 +630,238 @@ idempotente.
 }
 ```
 
-404 si la elección no existe. Ordenado de más a menos votos.
+`GET /results/{id}/stream` (`Content-Type: text/event-stream`):
 
-### 5.3 Election Service (puerto 8000)
+```
+event: counts
+data: {"election_id": 1, "total_votes": 11, "counts": {"1": 4, "2": 7}}
+```
 
-El Vote Service solo necesita `GET /elections/{id}` (ver 4.1): campos `is_open` y `candidates[].id`,
-`candidates[].name`. El front-end usa GraphQL (`POST /graphql`) con la consulta `elections { id name description
-status startsAt endsAt isOpen candidateCount candidates { id number name description } }`.
+### 5.2 APIs internas (solo las llama el gateway)
 
-### 5.4 CORS
+| Servicio | Endpoint | Respuestas |
+|---|---|---|
+| `agr-auth-lo` | `POST /auth/login` | 200 con el token, 401 credenciales incorrectas |
+| `agr-auth-lo` | `GET /auth/validate` | 200 `{"voter_id": 1}`, 401 token inválido o vencido |
+| `agr-voter-lo` | `POST /voters/mark-voted` `{voter_id, election_id}` | 200 `{"status": "marked"}`, 409 ya votó en esa elección, 401 llave de servicio incorrecta |
+| `agr-voter-lo` | `POST /voters/unmark-voted` `{voter_id, election_id}` | 200 `{"status": "unmarked"}` (idempotente) |
+| `agr-election-lo` | REST y GraphQL del P1 | Ver sección 4.6; errores 401, 404, 409, 422 |
+| `agr-vote-lo` | `POST /votes` `{election_id, candidate_id, candidate_name}` + `Idempotency-Key` | 201 `{"status": "recorded"}` (también si la llave se repite), 500 no se pudo guardar |
+| `agr-results-lo` | `GET /results/{id}` | 200 `{"election_id", "total_votes", "counts": {"<candidate_id>": votos}}` |
+| `agr-results-lo` | `GET /results/{id}/stream` | SSE con eventos `counts` |
+| `agr-audit-lo` | `GET /audit/events?election_id=&limit=` | 200 lista de eventos |
+| `agr-audit-lo` | `GET /audit/summary/{election_id}` | 200 `{"election_id", "events"}` |
 
-El navegador llama a los servicios desde otro origen (`http://localhost:3000`), así que cada servicio responde la
-petición previa `OPTIONS` y acepta ese origen. En el Election Service y el Vote Service el origen se cambia con
-`CORS_ORIGINS` (valores separados por coma). Para desarrollar con `npm run dev` el origen pasa a
-`http://localhost:5173`: agréguenlo a `CORS_ORIGINS`. El Voter Service tiene `http://localhost:3000` fijo en
-`SecurityConfig` (sección 11).
+`mark-voted`, `unmark-voted` y el `POST /votes` de `agr-vote-lo` exigen `X-Service-Key`; sin ella responden 401.
+Las escrituras del Election Service exigen `X-API-Key`, que el gateway reenvía.
 
-## 6. Flujo completo de un voto
+### 5.3 Evento `VoteRegistered`
+
+Lo publica `agr-vote-lo` en el exchange `agora.votes`; lo consumen `agr-results-lo` y `agr-audit-lo`.
+
+```json
+{
+  "event_id": "6720f3a1c2b9e8a4d1f00a17",
+  "type": "VoteRegistered",
+  "version": 1,
+  "election_id": 1,
+  "candidate_id": 2,
+  "occurred_at": "2026-11-03T14:00:00Z"
+}
+```
+
+| Campo | Detalle |
+|---|---|
+| `event_id` | El `_id` del voto en `agr-votes-db`. Único: sirve para descartar repetidos |
+| `type`, `version` | Permiten cambiar el formato sin romper a los consumidores |
+| `election_id`, `candidate_id` | Lo único necesario para contar. **Ningún dato del votante** |
+| `occurred_at` | Hora del voto redondeada a la hora |
+
+## 6. Flujos completos
+
+### 6.1 Votar (saga orquestada por `agr-gateway-or`)
 
 ```mermaid
 sequenceDiagram
   actor V as Votante
-  participant FE as agr-frontend-fr
-  participant VS as agr-voter-lo
-  participant TS as agr-vote-lo
-  participant ES as agr-election-lo
-  participant VDB as agr-voters-db
-  participant TDB as agr-votes-db
-  V->>FE: documento y clave
-  FE->>VS: POST /auth/login
-  VS-->>FE: JWT (1 hora)
-  FE->>ES: GraphQL elections
-  ES-->>FE: elecciones y candidatos
-  V->>FE: elige candidato y confirma
-  FE->>TS: POST /votes (JWT)
-  TS->>ES: GET /elections/{id}
-  ES-->>TS: is_open y candidatos
-  TS->>VS: POST /voters/mark-voted
-  VS->>VDB: UPDATE has_voted (atómico)
-  VS-->>TS: 200 o 409
-  TS->>TDB: inserta voto anónimo
-  alt falla el guardado
-    TS->>VS: POST /voters/unmark-voted
+  participant W as agr-web-fr
+  participant G as agr-gateway-or
+  participant U as agr-auth-lo
+  participant E as agr-election-lo
+  participant O as agr-voter-lo
+  participant T as agr-vote-lo
+  participant B as agr-broker-as
+  V->>W: elige candidato y confirma
+  W->>G: POST /votes (JWT)
+  G->>U: GET /auth/validate
+  U-->>G: voter_id
+  G->>E: GET /elections/{id}
+  E-->>G: is_open y candidatos
+  G->>O: POST /voters/mark-voted {voter_id, election_id}
+  O-->>G: 200, o 409 si ya votó en esa elección
+  G->>T: POST /votes con Idempotency-Key (sin datos del votante)
+  alt el voto no se pudo guardar
+    T-->>G: 500
+    G->>O: POST /voters/unmark-voted (compensación)
+    G-->>W: 500
+  else no hay respuesta a tiempo
+    G->>T: reintenta una vez con la misma Idempotency-Key
+    G-->>W: 502 si sigue sin respuesta (sin compensar)
+  else voto guardado
+    T-->>G: 201
+    G-->>W: 201
+    T->>B: VoteRegistered (outbox)
   end
-  TS-->>FE: 201
-  FE->>TS: GET /results/{id}
-  TS-->>FE: conteo por candidato
 ```
 
-Por qué este orden: primero se valida la elección (para no marcar votantes por una elección cerrada), luego se
-marca al votante (atómico, impide el doble voto) y por último se guarda el voto. Como PostgreSQL y MongoDB no
-comparten transacción, si el último paso falla se compensa desmarcando al votante.
+**Paso a paso:**
+
+1. El gateway valida el JWT con `agr-auth-lo` y obtiene el `voter_id`. Si falta o es inválido: 401.
+2. Pide la elección a `agr-election-lo`: si no existe, 404; si no está abierta, 409; si el candidato no le
+   pertenece, 422. Se valida **antes** de marcar para no gastar el voto en una elección cerrada.
+3. Marca la participación en `agr-voter-lo`. Si ya votó en esa elección: 409.
+4. Genera una `Idempotency-Key` aleatoria y pide a `agr-vote-lo` guardar el voto, sin ningún dato del votante.
+5. Si `agr-vote-lo` responde 500, **compensa**: desmarca la participación y responde 500 (el votante puede intentar
+   de nuevo).
+6. Si `agr-vote-lo` no responde a tiempo, **no compensa**, porque el voto pudo haberse guardado y desmarcar
+   permitiría votar dos veces. Reintenta una vez con la misma llave; si tampoco responde, devuelve 502.
+7. Si todo sale bien, responde 201. El evento `VoteRegistered` sale después, por el *outbox*.
+
+**Códigos de `POST /votes` y lo que ve el votante:**
+
+| Código | Cuándo | Mensaje en el web |
+|---|---|---|
+| 201 | Voto registrado | "Tu voto quedó guardado de forma anónima." |
+| 401 | Falta el JWT, o es inválido o venció | Vuelve al login con "Tu sesión expiró" |
+| 404 | La elección no existe | "La elección no existe." |
+| 409 | La elección no está abierta, o ya votó en ella (lo dice `detail`) | "La elección no está abierta" o "Ya votaste en esta elección" |
+| 422 | El candidato no pertenece a la elección | "El candidato no pertenece a esta elección" |
+| 500 | Falló el guardado y ya se compensó | "No se pudo guardar tu voto. Puedes intentarlo de nuevo." |
+| 502 | Un servicio no responde | "El sistema no puede validar tu voto en este momento." |
+
+### 6.2 Conteo y resultados en vivo
+
+```mermaid
+sequenceDiagram
+  participant T as agr-vote-lo
+  participant B as agr-broker-as
+  participant R as agr-results-lo
+  participant D as agr-results-db
+  participant A as agr-audit-lo
+  participant G as agr-gateway-or
+  participant W as Navegador
+  W->>G: GET /results/1/stream
+  G->>R: GET /results/1/stream
+  R-->>G: counts actuales
+  G-->>W: counts actuales
+  T->>B: VoteRegistered
+  B->>R: entrega desde results.vote-registered
+  R->>D: script Lua: SADD seen y HINCRBY si es nuevo
+  R->>B: ack
+  R-->>G: event: counts
+  G-->>W: event: counts
+  B->>A: entrega desde audit.vote-registered
+  A->>A: inserta en agr-audit-db (event_id único)
+  A->>B: ack
+```
+
+Resultados y auditoría trabajan en paralelo y no dependen uno del otro. Si `agr-results-lo` está caído, la votación
+sigue funcionando: los eventos esperan en su cola y se cuentan cuando vuelve.
+
+### 6.3 Anonimato
+
+| Base | Responde a | Qué guarda | Qué no guarda |
+|---|---|---|---|
+| `agr-auth-db` | ¿Quién es? | documento, nombre, hash de la clave | nada sobre votos |
+| `agr-voters-db` | ¿Ya votó en esta elección? | `voter_id`, `election_id` | candidato, fecha y hora |
+| `agr-votes-db` | ¿Qué se votó? | elección, candidato, hora redondeada | ningún dato del votante |
+| `agr-results-db`, `agr-audit-db` | ¿Cuántos votos? ¿Qué pasó? | conteos y eventos | ningún dato del votante |
+
+El único componente que ve en la misma petición quién vota y por quién es el gateway, y no lo guarda ni lo registra
+en sus logs.
 
 ## 7. Cómo se cumplen los requisitos del enunciado
 
-| Requisito | Cómo se cumple | Cómo comprobarlo |
-|---|---|---|
-| Arquitectura distribuida | 7 contenedores que se comunican por red | `docker compose ps` |
-| Al menos 1 componente de presentación | `agr-frontend-fr` (React) | http://localhost:3000 |
-| Al menos 2 componentes de lógica | `agr-voter-lo`, `agr-vote-lo` y `agr-election-lo` | URLs `/health` de la sección 3 |
-| Al menos 2 componentes de datos (relacional y NoSQL) | PostgreSQL (`agr-elections-db` y `agr-voters-db`) y MongoDB (`agr-votes-db`) | `docker compose ps` |
-| Al menos 2 tipos de conectores HTTP | REST y GraphQL | Swagger y GraphiQL en el puerto 8000 |
-| Al menos 3 lenguajes de propósito general | Python, Java y Go (más TypeScript en el front-end) | Carpetas `election-service/`, `voter-service/`, `vote-service/`, `frontend/` |
-| Despliegue orientado a contenedores | Docker y Docker Compose | `docker compose up --build` |
-
-El entregable `p1_1b.pdf` (creado en `.md` y exportado a PDF) debe tener: equipo (nombre y nombres completos),
-sistema (nombre, logo y descripción), estructura de componentes y conectores (vista C&C, estilos arquitectónicos
-usados, descripción de elementos y relaciones) y los comandos para descargar y ejecutar. Está en
-[`artifacts/p1_1b.md`](artifacts/p1_1b.md); la vista C&C de la sección 2 y las descripciones de las secciones 4 a 6
-son su base.
+| Requisito del Prototipo 2 | Cómo se cumple |
+|---|---|
+| Arquitectura distribuida | 16 componentes en contenedores que se comunican por red (15 corren siempre; la CLI se ejecuta bajo demanda) |
+| Al menos 2 componentes de presentación, uno web | `agr-web-fr` (web) y `agr-admin-fr` (CLI) |
+| Web con subarquitectura SSR | `agr-web-fr` genera las páginas en el servidor con Next.js |
+| Componentes de lógica ≥ integrantes (6) | `agr-auth-lo`, `agr-voter-lo`, `agr-election-lo`, `agr-vote-lo`, `agr-results-lo`, `agr-audit-lo` |
+| Al menos 1 componente de comunicación u orquestación | `agr-gateway-or` |
+| Al menos 4 componentes de datos, relacionales y NoSQL | 3 PostgreSQL, 2 MongoDB y 1 Redis |
+| Al menos 1 componente de procesos asíncronos | `agr-broker-as` (RabbitMQ) con sus consumidores |
+| Conectores HTTP | REST, GraphQL y SSE |
+| Al menos 5 lenguajes de propósito general | Python, Java, Go, TypeScript, Rust y C# |
+| Despliegue orientado a contenedores | Docker y Docker Compose |
 
 ## 8. Variables de entorno
 
-Se pueden cambiar copiando `.env.example` a `.env`. Todas tienen un valor por defecto en el compose.
+Se cambian copiando `.env.example` a `.env`. Todas tienen un valor por defecto en el compose.
 
 | Variable | Componente | Por defecto | Uso |
 |---|---|---|---|
-| `ELECTIONS_DB_USER`, `ELECTIONS_DB_PASSWORD`, `ELECTIONS_DB_NAME` | Elections DB y Election Service | `elections` | Credenciales de la base |
-| `ADMIN_API_KEY` | Election Service | `dev-admin-key` | Llave para escribir (`X-API-Key`) |
-| `SEED_DATA` | Election Service | `true` | Cargar elecciones de ejemplo |
+| `AUTH_DB_USER`, `AUTH_DB_PASSWORD`, `AUTH_DB_NAME` | Auth DB y Auth Service | `auth` | Credenciales de la base |
 | `VOTERS_DB_USER`, `VOTERS_DB_PASSWORD`, `VOTERS_DB_NAME` | Voters DB y Voter Service | `voters` | Credenciales de la base |
-| `JWT_SECRET` | Voter Service | `dev-jwt-secret-change-me-0123456789abcdef` | Firma de los JWT (mínimo 32 caracteres) |
-| `SERVICE_API_KEY` | Voter Service y Vote Service | `dev-service-key` | Llave para llamadas entre servicios |
-| `MONGO_DB` | Vote Service | `votes` | Nombre de la base en MongoDB |
-| `CORS_ORIGINS` | Election Service y Vote Service | `http://localhost:3000` | Orígenes permitidos (separados por coma). El Voter Service no la lee |
-| `VITE_ELECTION_API_URL`, `VITE_VOTER_API_URL`, `VITE_VOTE_API_URL` | Front-end (al compilar) | `http://localhost:8000`, `:8001`, `:8002` | URLs de los servicios vistas desde el navegador |
+| `ELECTIONS_DB_USER`, `ELECTIONS_DB_PASSWORD`, `ELECTIONS_DB_NAME` | Elections DB y Election Service | `elections` | Credenciales de la base |
+| `VOTES_MONGO_DB` | Vote Service | `votes` | Base de MongoDB de los votos |
+| `AUDIT_MONGO_DB` | Audit Service | `audit` | Base de MongoDB de la auditoría |
+| `BROKER_USER`, `BROKER_PASSWORD` | Broker y sus clientes | `agora` | Credenciales de RabbitMQ y de la consola |
+| `JWT_SECRET` | Auth Service | `dev-jwt-secret-change-me-0123456789abcdef` | Firma de los JWT (mínimo 32 caracteres) |
+| `ADMIN_API_KEY` | Gateway, Election Service y CLI | `dev-admin-key` | Llave de administración (`X-API-Key`) |
+| `SERVICE_API_KEY` | Gateway, Voter Service y Vote Service | `dev-service-key` | Llave entre el gateway y los servicios |
+| `SEED_DATA` | Election Service y Auth Service | `true` | Cargar los datos de ejemplo |
+| `CORS_ORIGINS` | Gateway | `http://localhost:3000` | Orígenes permitidos para el navegador |
+| `GATEWAY_INTERNAL_URL` | Web (servidor) | `http://agr-gateway-or:8080` | Gateway visto desde el servidor de Next.js |
+| `NEXT_PUBLIC_GATEWAY_URL` | Web (navegador) | `http://localhost:8080` | Gateway visto desde el navegador |
+| `AGORA_GATEWAY_URL` | CLI | `http://agr-gateway-or:8080` | Gateway visto desde la CLI |
 
-Variables que el compose fija y no se cambian por `.env`: `DATABASE_URL`, `DB_URL`, `MONGO_URI`,
-`ELECTION_SERVICE_URL` y `VOTER_SERVICE_URL` (usan los nombres de servicio de la red de Compose).
+Variables que el compose arma y no se cambian por `.env`: las URLs de cada base (`DATABASE_URL`, `DB_URL`,
+`MONGO_URI`, `REDIS_URL`), `AMQP_URL` y las URLs de los servicios que usa el gateway. Todas usan los nombres
+`agr-*` de la red de Compose.
 
-## Estructura del repositorio
+## 9. Límites conocidos
+
+- Si `agr-vote-lo` no responde a tiempo dos veces, el votante puede quedar marcado sin voto (sección 6.1). Es el
+  costo de no compensar a ciegas.
+- Los resultados en vivo tienen consistencia eventual: después de votar, el conteo puede tardar un instante en
+  reflejar el voto.
+- El JWT vive en `sessionStorage` y no se puede revocar antes de que venza (1 hora). La mejora sería una cookie
+  `HttpOnly` gestionada por el servidor de Next.js.
+- Sin HTTPS, sin límite de intentos de login y con claves de ejemplo por defecto.
+- La administración usa una llave compartida, no usuarios con roles.
+- Cada servicio corre en una sola instancia; el diseño permitiría replicar los servicios sin estado detrás del
+  gateway.
+
+## 10. Estructura del repositorio
 
 ```
 .
-├── docker-compose.yml          (los 7 contenedores)
-├── docker-compose.test.yml     (se suma al anterior para las pruebas de punta a punta del Vote Service)
+├── docker-compose.yml          (los 16 componentes, redes y volúmenes)
 ├── .env.example
-├── PRUEBAS.md                  (plan de pruebas y criterio para pasar a main)
-├── .github/workflows/ci.yml    (CI/CD)
-├── artifacts/                  (entregable: p1_1b.md, logo y vista C&C)
-├── scripts/
-│   └── smoke_test.py           (pruebas de humo del sistema completo)
-├── election-service/           (Python, FastAPI)       completo
-│   ├── Dockerfile
-│   ├── app/
-│   └── tests/
-├── voter-service/              (Java, Spring Boot)     completo
-│   ├── Dockerfile
-│   ├── pom.xml
-│   └── src/
-├── vote-service/               (Go)                    completo
-│   ├── Dockerfile
-│   ├── go.mod, go.sum
-│   ├── main.go
-│   ├── internal/               (handler, service, repository, client, model, config)
-│   └── e2e/
-└── frontend/                   (TypeScript, React)     completo
-    ├── Dockerfile
-    ├── nginx.conf
-    └── src/                    (pages, components, context, hooks, services)
+├── .github/workflows/ci.yml    (CI)
+├── artifacts/                  (entregables: p1_1b.md, p2_1b.md, logo y vistas)
+├── agr-web-fr/                 (TypeScript, Next.js SSR)
+│   └── app/, components/, lib/
+├── agr-admin-fr/               (Go, CLI "agora")
+│   └── cmd/, internal/client, internal/commands
+├── agr-gateway-or/             (TypeScript, Node.js)
+│   └── src/routes, middleware, saga, compose, sse, clients
+├── agr-auth-lo/                (Java, Spring Boot)
+│   └── controller, service, repository, security, config
+├── agr-voter-lo/               (Java, Spring Boot)
+│   └── controller, service, repository
+├── agr-election-lo/            (Python, FastAPI)
+│   └── app/ (routers, graphql_api, services, models, schemas)
+├── agr-vote-lo/                (Go)
+│   └── internal/ (handler, service, repository, publisher, outbox)
+├── agr-results-lo/             (Rust)
+│   └── src/ (consumer, service, repository, sse)
+├── agr-audit-lo/               (C#, .NET)
+│   └── Consumers/, Services/, Repositories/, Controllers/
+└── agr-broker-as/              (RabbitMQ)
+    └── definitions.json, rabbitmq.conf
 ```
+
+Las bases de datos no tienen carpeta: usan imágenes oficiales (`postgres:16-alpine`, `mongo:7`, `redis:7-alpine`)
+configuradas desde el compose.
