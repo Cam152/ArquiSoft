@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: vote-service
+        working-directory: agr-vote-lo
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: vote-service/go.mod
-          cache-dependency-path: vote-service/go.sum
+          go-version-file: agr-vote-lo/go.mod
+          cache-dependency-path: agr-vote-lo/go.sum
       - name: Formato (gofmt)
         run: |
           unformatted="$(gofmt -l .)"
@@ -48,14 +48,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: election-service
+        working-directory: agr-election-lo
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: election-service/requirements*.txt
+          cache-dependency-path: agr-election-lo/requirements*.txt
       - run: pip install -r requirements-dev.txt
       - run: pytest
 
@@ -65,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Pruebas de punta a punta (Docker Compose)
-        run: ./vote-service/e2e/run.sh
+        run: ./agr-vote-lo/e2e/run.sh
 
   system:
     name: Sistema completo - arranque con Docker Compose
@@ -101,7 +101,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}/vote-service"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/agr-vote-lo"
           echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          docker build --tag "$image:$GITHUB_SHA" --tag "$image:latest" vote-service
+          docker build --tag "$image:$GITHUB_SHA" --tag "$image:latest" agr-vote-lo
           docker push --all-tags "$image"
