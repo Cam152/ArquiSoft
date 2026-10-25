@@ -144,6 +144,39 @@ services:
       retries: 6
       start_period: 15s
     restart: unless-stopped
+    
+  agr-auth-db:
+    image: postgres:16-alpine
+    container_name: agr-auth-db
+    environment:
+      POSTGRES_DB: agr_auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5437:5432"
+    volumes:
+      - agr_auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agr_auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  agr-auth-lo:
+    build:
+      context: ./agr-auth-lo
+      dockerfile: Dockerfile
+    container_name: agr-auth-lo
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://agr-auth-db:5432/agr_auth_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      JWT_SECRET: super-secret-key-agora-proto-2-change-this-in-production-32bytes
+    depends_on:
+      agr-auth-db:
+        condition: service_healthy
 
 
   # ============================================================
@@ -176,3 +209,4 @@ volumes:
   elections-db-data:
   voters-db-data:
   votes-db-data:
+  agr_auth_db_data:
