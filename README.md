@@ -316,7 +316,7 @@ varios servicios y reenvía el stream de resultados en vivo.
 **Cómo lo hace:**
 
 - **Enrutamiento.** Cada ruta pública (sección 5.1) apunta a un servicio interno por la red `agr-back`
-  (`http://agr-election-lo:8000`, `http://agr-vote-lo:8002`, etc.). Biblioteca sugerida: Fastify.
+  (`http://agr-election-lo:8000`, `http://agr-vote-lo:8002`, etc.). Está hecho sin framework, solo con `node:http` y `fetch` (ver `agr-gateway-or/README.md`).
 - **Autenticación del votante.** En las rutas que la exigen (`POST /votes`), el gateway llama a
   `GET /auth/validate` de `agr-auth-lo` con el header `Authorization` recibido. Si la respuesta es 200, obtiene el
   `voter_id`; si es 401, responde 401. El gateway no conoce el secreto del JWT.

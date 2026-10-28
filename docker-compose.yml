@@ -180,6 +180,39 @@ services:
 
 
   # ============================================================
+  # ORQUESTACIÓN - API GATEWAY
+  # ============================================================
+  # Único punto de entrada de la API (README, sección 4.3). Llama a los servicios
+  # por el nombre de su contenedor (agr-*), que Docker resuelve en la red de Compose.
+  agr-gateway-or:
+    container_name: agr-gateway-or
+    build: ./agr-gateway-or
+    environment:
+      AUTH_SERVICE_URL: http://agr-auth-lo:8081
+      VOTER_SERVICE_URL: http://agr-voter-lo:8001
+      ELECTION_SERVICE_URL: http://agr-election-lo:8000
+      VOTE_SERVICE_URL: http://agr-vote-lo:8002
+      RESULTS_SERVICE_URL: http://agr-results-lo:8004
+      AUDIT_SERVICE_URL: http://agr-audit-lo:8005
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "8080:8080"
+    depends_on:
+      election-service:
+        condition: service_healthy
+      agr-auth-lo:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
+  # ============================================================
   # PRESENTACIÓN - FRONTEND
   # ============================================================
   frontend:

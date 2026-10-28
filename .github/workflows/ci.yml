@@ -59,6 +59,20 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest
 
+  gateway-unit:
+    name: API Gateway - pruebas
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agr-gateway-or
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Pruebas contra servicios simulados
+        run: npm test
+
   e2e:
     name: Vote Service - pruebas de punta a punta
     runs-on: ubuntu-latest
@@ -79,6 +93,7 @@ jobs:
       - name: Comprobar cada componente
         run: |
           curl --fail --silent --show-error http://localhost:8000/health
+          curl --fail --silent --show-error http://localhost:8080/health
           curl --fail --silent --show-error http://localhost:8002/health
           curl --fail --silent --show-error http://localhost:8002/results/1
           curl --fail --silent --show-error --output /dev/null http://localhost:3000
