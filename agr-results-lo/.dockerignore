@@ -1,0 +1,5 @@
+.git
+target
+tests
+*.md
+docker-compose.results.yml
