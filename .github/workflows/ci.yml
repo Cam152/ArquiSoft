@@ -59,6 +59,40 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest
 
+  results-service:
+    name: Results Service - formato, lint y pruebas (Redis y RabbitMQ reales)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agr-results-lo
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+      rabbitmq:
+        image: rabbitmq:3-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: agora
+          RABBITMQ_DEFAULT_PASS: agora
+        ports: ["5672:5672"]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Formato (cargo fmt)
+        run: cargo fmt --check
+      - name: Lint (clippy)
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Pruebas unitarias
+        run: cargo test --locked
+      - name: Pruebas de integración (Redis y RabbitMQ)
+        env:
+          TEST_REDIS_URL: redis://localhost:6379
+          TEST_AMQP_URL: amqp://agora:agora@localhost:5672/%2f
+        run: cargo test --locked --test integration -- --ignored --test-threads=1
+
   e2e:
     name: Vote Service - pruebas de punta a punta
     runs-on: ubuntu-latest
