@@ -1,0 +1,63 @@
+# Fragmento del compose para agr-results-lo y agr-results-db (responsable: Miguel).
+#
+# El docker-compose.yml de la raíz todavía es el del Prototipo 1 y lo mantiene
+# David (Plataforma), así que este archivo NO se carga solo. Para integrarlo:
+#   - copien los dos servicios y el volumen `results-db-data` al compose de la raíz, o
+#   - pruébenlo junto al compose del P2:
+#       docker compose -f docker-compose.yml -f agr-results-lo/docker-compose.results.yml up --build
+#
+# Supone lo que define el documento del P2 y que ponen otros integrantes:
+#   - servicio `agr-broker-as` con healthcheck, y redes `agr-back` y `agr-data` (David y Maicol);
+#   - topología del broker (exchange agora.votes, cola results.vote-registered): Maicol, definitions.json.
+#
+# Variables nuevas (agregar a .env.example): RESULTS_DB_PASSWORD.
+services:
+
+  # ============================================================
+  # DATOS - RESULTADOS
+  # ============================================================
+  agr-results-db:
+    container_name: agr-results-db
+    image: redis:7-alpine
+    # appendonly yes: los conteos sobreviven a un reinicio del contenedor.
+    # La clave es la credencial propia de esta base (ningún otro servicio la conoce).
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${RESULTS_DB_PASSWORD:-results}"]
+    environment:
+      REDISCLI_AUTH: ${RESULTS_DB_PASSWORD:-results}
+    volumes:
+      - results-db-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [agr-data]
+    restart: unless-stopped
+
+  # ============================================================
+  # LÓGICA - RESULTS SERVICE
+  # ============================================================
+  agr-results-lo:
+    container_name: agr-results-lo
+    build: ./agr-results-lo
+    environment:
+      PORT: "8004"
+      REDIS_URL: redis://:${RESULTS_DB_PASSWORD:-results}@agr-results-db:6379
+      AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/%2f
+      RESULTS_QUEUE: results.vote-registered
+    depends_on:
+      agr-results-db:
+        condition: service_healthy
+      agr-broker-as:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks: [agr-back, agr-data]
+    restart: unless-stopped
+
+volumes:
+  results-db-data:
