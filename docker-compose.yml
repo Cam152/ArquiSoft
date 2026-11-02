@@ -49,18 +49,16 @@ services:
 
 
   # ============================================================
-  # DATOS - VOTANTES
+  # DATOS - VOTANTES (responsable: Camilo)
   # ============================================================
-  voters-db:
+  # Tabla ballots_cast: en qué elecciones ya votó cada votante.
+  agr-voters-db:
     container_name: agr-voters-db
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${VOTERS_DB_USER:-voters}
       POSTGRES_PASSWORD: ${VOTERS_DB_PASSWORD:-voters}
       POSTGRES_DB: ${VOTERS_DB_NAME:-voters}
-    ports:
-      # Puerto del equipo configurable mediante .env
-      - "${VOTERS_DB_PORT:-5432}:5432"
     volumes:
       - voters-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -72,22 +70,19 @@ services:
 
 
   # ============================================================
-  # LÓGICA - VOTER SERVICE
+  # LÓGICA - VOTER SERVICE (responsable: Camilo)
   # ============================================================
-  voter-service:
+  # Marca y desmarca la participación (saga del voto). Solo lo llama el gateway.
+  agr-voter-lo:
     container_name: agr-voter-lo
     build: ./agr-voter-lo
     environment:
-      DB_URL: jdbc:postgresql://voters-db:5432/${VOTERS_DB_NAME:-voters}
+      DB_URL: jdbc:postgresql://agr-voters-db:5432/${VOTERS_DB_NAME:-voters}
       DB_USER: ${VOTERS_DB_USER:-voters}
       DB_PASSWORD: ${VOTERS_DB_PASSWORD:-voters}
-      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-0123456789abcdef}
       SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    ports:
-      - "8001:8001"
     depends_on:
-      voters-db:
+      agr-voters-db:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8001/health"]
@@ -174,6 +169,53 @@ services:
 
 
   # ============================================================
+  # DATOS - AUDITORÍA (responsable: Camilo)
+  # ============================================================
+  # Registro inmutable de eventos. Usuario y clave propios: solo agr-audit-lo los conoce.
+  agr-audit-db:
+    container_name: agr-audit-db
+    image: mongo:7
+    command: ["mongod", "--quiet"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${AUDIT_DB_USER:-audit}
+      MONGO_INITDB_ROOT_PASSWORD: ${AUDIT_DB_PASSWORD:-audit}
+    volumes:
+      - audit-db-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+
+  # ============================================================
+  # LÓGICA - AUDIT SERVICE (responsable: Camilo)
+  # ============================================================
+  # Consume audit.vote-registered y guarda cada evento. El gateway lo consulta
+  # en GET /admin/audit.
+  agr-audit-lo:
+    container_name: agr-audit-lo
+    build: ./agr-audit-lo
+    environment:
+      MONGO_URI: mongodb://${AUDIT_DB_USER:-audit}:${AUDIT_DB_PASSWORD:-audit}@agr-audit-db:27017/?authSource=admin
+      MONGO_DB: ${AUDIT_MONGO_DB:-audit}
+      AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/
+    depends_on:
+      agr-audit-db:
+        condition: service_healthy
+      agr-broker-as:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+
+  # ============================================================
   # PRESENTACIÓN - CLI DE ADMINISTRACIÓN (responsable: Maicol)
   # ============================================================
   # No corre con "up" (perfil tools). Uso:
@@ -247,6 +289,10 @@ services:
         condition: service_started
       agr-vote-lo:
         condition: service_healthy
+      agr-voter-lo:
+        condition: service_healthy
+      agr-audit-lo:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
@@ -271,7 +317,7 @@ services:
     depends_on:
       election-service:
         condition: service_healthy
-      voter-service:
+      agr-voter-lo:
         condition: service_healthy
       agr-vote-lo:
         condition: service_healthy
@@ -286,4 +332,5 @@ volumes:
   voters-db-data:
   votes-db-data:
   broker-data:
+  audit-db-data:
   agr_auth_db_data:

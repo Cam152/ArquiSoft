@@ -492,8 +492,13 @@ consultar a quien administra.
   `GET /admin/audit` con la llave de administración.
 - **Capas:** `Consumers/`, `Services/`, `Repositories/` y `Controllers/` (ASP.NET Core).
 
+- **Mensajes que no cumplen el contrato** (otro `type`, otra `version`, campos faltantes) se rechazan sin reencolar
+  y van a `audit.dead`. Si falla MongoDB, el mensaje vuelve a la cola tras una pausa de 2 segundos; después de 5
+  entregas RabbitMQ lo pasa a `audit.dead`.
+
 **Datos (`agr-audit-db`):** colección `events {event_id, type, election_id, occurred_at, recorded_at}`. Ambas horas
-se redondean a la hora. Volumen `audit-db-data`. **Puerto interno:** 8005.
+se redondean a la hora. El `_id` del documento es el mismo `event_id`: un `ObjectId` propio guardaría la hora exacta
+de inserción. Volumen `audit-db-data`. **Puerto interno:** 8005.
 
 ### 4.11 Docker Compose y despliegue
 
@@ -810,6 +815,7 @@ Se cambian copiando `.env.example` a `.env`. Todas tienen un valor por defecto e
 | `ELECTIONS_DB_USER`, `ELECTIONS_DB_PASSWORD`, `ELECTIONS_DB_NAME` | Elections DB y Election Service | `elections` | Credenciales de la base |
 | `VOTES_DB_USER`, `VOTES_DB_PASSWORD` | Votes DB y Vote Service | `votes` | Credenciales de la base |
 | `VOTES_MONGO_DB` | Vote Service | `votes` | Base de MongoDB de los votos |
+| `AUDIT_DB_USER`, `AUDIT_DB_PASSWORD` | Audit DB y Audit Service | `audit` | Credenciales de la base |
 | `AUDIT_MONGO_DB` | Audit Service | `audit` | Base de MongoDB de la auditoría |
 | `BROKER_USER`, `BROKER_PASSWORD` | Broker y sus clientes | `agora` | Credenciales de RabbitMQ y de la consola |
 | `JWT_SECRET` | Auth Service | `dev-jwt-secret-change-me-0123456789abcdef` | Firma de los JWT (mínimo 32 caracteres) |
