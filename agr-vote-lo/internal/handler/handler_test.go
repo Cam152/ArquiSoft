@@ -7,133 +7,80 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
-	"time"
 
-	"vote-service/internal/client"
 	"vote-service/internal/handler"
 	"vote-service/internal/model"
 	"vote-service/internal/service"
 )
 
-// Estas pruebas recorren todas las capas (handler, service y client). Solo se
-// simulan MongoDB, el Election Service y el Voter Service.
+// Estas pruebas recorren handler y service reales. Solo se simulan MongoDB y el
+// outbox.
 
-// fakeStore reemplaza a MongoDB en las pruebas.
-type fakeStore struct {
-	votes      []model.Vote
-	audit      []model.AuditEvent
-	failInsert bool
+type memRepo struct {
+	mu        sync.Mutex
+	byKey     map[string]model.Vote
+	insertErr error
+	pingErr   error
 }
 
-func (s *fakeStore) InsertVote(_ context.Context, vote model.Vote) error {
-	if s.failInsert {
-		return errors.New("mongo caído")
+func (r *memRepo) Insert(_ context.Context, v model.Vote) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.insertErr != nil {
+		return r.insertErr
 	}
-	s.votes = append(s.votes, vote)
+	if _, ok := r.byKey[v.IdempotencyKey]; ok {
+		return model.ErrDuplicateKey
+	}
+	r.byKey[v.IdempotencyKey] = v
 	return nil
 }
 
-func (s *fakeStore) InsertAudit(_ context.Context, event model.AuditEvent) error {
-	s.audit = append(s.audit, event)
-	return nil
-}
-
-func (s *fakeStore) CountByCandidate(_ context.Context, electionID int) (map[int]int, error) {
-	counts := map[int]int{}
-	for _, v := range s.votes {
-		if v.ElectionID == electionID {
-			counts[v.CandidateID]++
-		}
+func (r *memRepo) FindByIdempotencyKey(_ context.Context, key string) (*model.Vote, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if v, ok := r.byKey[key]; ok {
+		return &v, nil
 	}
-	return counts, nil
+	return nil, nil
 }
 
-func writeJSON(w http.ResponseWriter, status int, body map[string]string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(body)
-}
+func (r *memRepo) Ping(context.Context) error { return r.pingErr }
 
-// fakeVoters simula el Voter Service: un solo votante con el token "good".
-type fakeVoters struct {
-	voted   bool
-	marks   int
-	unmarks int
-}
+type countingOutbox struct{ n int }
 
-func (f *fakeVoters) handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /voters/mark-voted", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer good" || r.Header.Get("X-Service-Key") != "test-key" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "Token inválido"})
-			return
-		}
-		if f.voted {
-			writeJSON(w, http.StatusConflict, map[string]string{"detail": "El votante ya votó"})
-			return
-		}
-		f.voted = true
-		f.marks++
-		writeJSON(w, http.StatusOK, map[string]string{"status": "marked"})
-	})
-	mux.HandleFunc("POST /voters/unmark-voted", func(w http.ResponseWriter, r *http.Request) {
-		f.voted = false
-		f.unmarks++
-		writeJSON(w, http.StatusOK, map[string]string{"status": "unmarked"})
-	})
-	return mux
-}
-
-const electionsJSON = `{
-  "1": {"id": 1, "is_open": true, "candidates": [{"id": 1, "name": "Ana Torres"}, {"id": 2, "name": "Luis Herrera"}, {"id": 3, "name": "Camila Duarte"}]},
-  "2": {"id": 2, "is_open": false, "candidates": [{"id": 4, "name": "Otro"}]}
-}`
+func (o *countingOutbox) Dispatch(model.Vote) { o.n++ }
 
 type env struct {
 	app    http.Handler
-	store  *fakeStore
-	voters *fakeVoters
+	repo   *memRepo
+	outbox *countingOutbox
 }
 
-func newApp(store *fakeStore, electionURL, voterURL string) http.Handler {
-	voting := service.NewVoting(store, client.NewElectionClient(electionURL), client.NewVoterClient(voterURL, "test-key"))
-	return handler.New(voting, []string{"http://localhost:3000"}).Routes()
+func newEnv() *env {
+	repo := &memRepo{byKey: map[string]model.Vote{}}
+	outbox := &countingOutbox{}
+	app := handler.New(service.NewVotes(repo, outbox), repo, "test-key").Routes()
+	return &env{app: app, repo: repo, outbox: outbox}
 }
 
-func newEnv(t *testing.T) *env {
-	t.Helper()
-	var elections map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(electionsJSON), &elections); err != nil {
-		t.Fatal(err)
-	}
-	electionSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, ok := elections[strings.TrimPrefix(r.URL.Path, "/elections/")]
-		if !ok {
-			writeJSON(w, http.StatusNotFound, map[string]string{"detail": "Elección no encontrada"})
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(raw)
-	}))
-	t.Cleanup(electionSrv.Close)
+const goodBody = `{"election_id": 1, "candidate_id": 2, "candidate_name": "Luis Herrera"}`
 
-	voters := &fakeVoters{}
-	voterSrv := httptest.NewServer(voters.handler())
-	t.Cleanup(voterSrv.Close)
-
-	store := &fakeStore{}
-	return &env{app: newApp(store, electionSrv.URL, voterSrv.URL), store: store, voters: voters}
-}
-
-func (e *env) do(method, path, token, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+func (e *env) post(body string, headers map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", "/votes", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	rec := httptest.NewRecorder()
 	e.app.ServeHTTP(rec, req)
 	return rec
+}
+
+func authed(key string) map[string]string {
+	return map[string]string{"X-Service-Key": "test-key", "Idempotency-Key": key}
 }
 
 func wantStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
@@ -143,123 +90,110 @@ func wantStatus(t *testing.T, rec *httptest.ResponseRecorder, want int) {
 	}
 }
 
+func wantDetail(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	var body struct {
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Detail == "" ||
+		!strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf(`se esperaba JSON {"detail": "..."}: %s`, rec.Body.String())
+	}
+}
+
 func TestHealth(t *testing.T) {
-	e := newEnv(t)
-	rec := e.do("GET", "/health", "", "")
+	e := newEnv()
+	rec := httptest.NewRecorder()
+	e.app.ServeHTTP(rec, httptest.NewRequest("GET", "/health", nil))
 	wantStatus(t, rec, http.StatusOK)
 	if strings.TrimSpace(rec.Body.String()) != `{"status":"ok"}` {
 		t.Fatalf("cuerpo inesperado: %s", rec.Body.String())
 	}
+
+	e.repo.pingErr = errors.New("mongo caído")
+	rec = httptest.NewRecorder()
+	e.app.ServeHTTP(rec, httptest.NewRequest("GET", "/health", nil))
+	wantStatus(t, rec, http.StatusServiceUnavailable)
+	wantDetail(t, rec)
 }
 
-func TestVoteIsRecordedAnonymously(t *testing.T) {
-	e := newEnv(t)
-	rec := e.do("POST", "/votes", "good", `{"election_id": 1, "candidate_id": 2}`)
+func TestVoteIsRecorded(t *testing.T) {
+	e := newEnv()
+	rec := e.post(goodBody, authed("key-1"))
 	wantStatus(t, rec, http.StatusCreated)
-
-	if len(e.store.votes) != 1 || len(e.store.audit) != 1 {
-		t.Fatalf("se esperaba 1 voto y 1 evento, hay %d y %d", len(e.store.votes), len(e.store.audit))
+	if strings.TrimSpace(rec.Body.String()) != `{"status":"recorded"}` {
+		t.Fatalf("cuerpo inesperado: %s", rec.Body.String())
 	}
-	vote := e.store.votes[0]
-	if vote.ElectionID != 1 || vote.CandidateID != 2 || vote.CandidateName != "Luis Herrera" {
-		t.Fatalf("voto inesperado: %+v", vote)
+	v := e.repo.byKey["key-1"]
+	if v.ElectionID != 1 || v.CandidateID != 2 || v.CandidateName != "Luis Herrera" || v.Published {
+		t.Fatalf("voto inesperado: %+v", v)
 	}
-	if !vote.CastAt.Equal(vote.CastAt.Truncate(time.Hour)) {
-		t.Fatalf("cast_at no está redondeado a la hora: %v", vote.CastAt)
-	}
-}
-
-func TestSecondVoteIsRejected(t *testing.T) {
-	e := newEnv(t)
-	wantStatus(t, e.do("POST", "/votes", "good", `{"election_id": 1, "candidate_id": 2}`), http.StatusCreated)
-	wantStatus(t, e.do("POST", "/votes", "good", `{"election_id": 1, "candidate_id": 1}`), http.StatusConflict)
-	if len(e.store.votes) != 1 {
-		t.Fatalf("se guardaron %d votos", len(e.store.votes))
+	if e.outbox.n != 1 {
+		t.Fatalf("se esperaba despachar 1 evento, se despacharon %d", e.outbox.n)
 	}
 }
 
-func TestVoteRejections(t *testing.T) {
+// El reintento del gateway con la misma llave responde 201 sin duplicar.
+func TestRetryWithSameKey(t *testing.T) {
+	e := newEnv()
+	wantStatus(t, e.post(goodBody, authed("key-1")), http.StatusCreated)
+	wantStatus(t, e.post(goodBody, authed("key-1")), http.StatusCreated)
+	if len(e.repo.byKey) != 1 || e.outbox.n != 1 {
+		t.Fatalf("votos %d, eventos %d; se esperaba 1 y 1", len(e.repo.byKey), e.outbox.n)
+	}
+
+	other := `{"election_id": 1, "candidate_id": 3, "candidate_name": "Camila Duarte"}`
+	rec := e.post(other, authed("key-1"))
+	wantStatus(t, rec, http.StatusConflict)
+	wantDetail(t, rec)
+}
+
+func TestRejections(t *testing.T) {
 	cases := []struct {
-		name, token, body string
-		want              int
+		name    string
+		body    string
+		headers map[string]string
+		want    int
 	}{
-		{"cuerpo inválido", "good", `{"election_id": "1"}`, http.StatusUnprocessableEntity},
-		{"falta candidate_id", "good", `{"election_id": 1}`, http.StatusUnprocessableEntity},
-		{"sin token", "", `{"election_id": 1, "candidate_id": 2}`, http.StatusUnauthorized},
-		{"token inválido", "bad", `{"election_id": 1, "candidate_id": 2}`, http.StatusUnauthorized},
-		{"elección inexistente", "good", `{"election_id": 99, "candidate_id": 2}`, http.StatusNotFound},
-		{"elección cerrada", "good", `{"election_id": 2, "candidate_id": 4}`, http.StatusConflict},
-		{"candidato de otra elección", "good", `{"election_id": 1, "candidate_id": 4}`, http.StatusUnprocessableEntity},
+		{"sin llave de servicio", goodBody, map[string]string{"Idempotency-Key": "k"}, http.StatusUnauthorized},
+		{"llave de servicio incorrecta", goodBody, map[string]string{"X-Service-Key": "otra", "Idempotency-Key": "k"}, http.StatusUnauthorized},
+		{"sin Idempotency-Key", goodBody, map[string]string{"X-Service-Key": "test-key"}, http.StatusUnprocessableEntity},
+		{"JSON inválido", `{"election_id":`, authed("k"), http.StatusUnprocessableEntity},
+		{"tipo incorrecto", `{"election_id": "1", "candidate_id": 2, "candidate_name": "A"}`, authed("k"), http.StatusUnprocessableEntity},
+		{"falta candidate_name", `{"election_id": 1, "candidate_id": 2}`, authed("k"), http.StatusUnprocessableEntity},
+		{"ids no positivos", `{"election_id": 0, "candidate_id": 2, "candidate_name": "A"}`, authed("k"), http.StatusUnprocessableEntity},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			e := newEnv(t)
-			wantStatus(t, e.do("POST", "/votes", tc.token, tc.body), tc.want)
-			if e.voters.voted || len(e.store.votes) != 0 {
-				t.Fatalf("no debía quedar marcado ni guardarse el voto")
+			e := newEnv()
+			rec := e.post(tc.body, tc.headers)
+			wantStatus(t, rec, tc.want)
+			wantDetail(t, rec)
+			if len(e.repo.byKey) != 0 || e.outbox.n != 0 {
+				t.Fatal("no debía guardarse ni publicarse el voto")
 			}
 		})
 	}
 }
 
-func TestFailedInsertIsCompensated(t *testing.T) {
-	e := newEnv(t)
-	e.store.failInsert = true
-	wantStatus(t, e.do("POST", "/votes", "good", `{"election_id": 1, "candidate_id": 2}`), http.StatusInternalServerError)
-	if e.voters.marks != 1 || e.voters.unmarks != 1 || e.voters.voted {
-		t.Fatalf("compensación incorrecta: %+v", e.voters)
+func TestStorageFailureReturns500(t *testing.T) {
+	e := newEnv()
+	e.repo.insertErr = errors.New("mongo caído")
+	rec := e.post(goodBody, authed("k"))
+	wantStatus(t, rec, http.StatusInternalServerError)
+	wantDetail(t, rec)
+	if e.outbox.n != 0 {
+		t.Fatal("no debe publicarse un voto que no se guardó")
 	}
 }
 
-func TestUnreachableServicesReturn502(t *testing.T) {
-	down := newApp(&fakeStore{}, "http://127.0.0.1:1", "http://127.0.0.1:1")
-
-	req := httptest.NewRequest("POST", "/votes", strings.NewReader(`{"election_id": 1, "candidate_id": 2}`))
-	req.Header.Set("Authorization", "Bearer good")
-	rec := httptest.NewRecorder()
-	down.ServeHTTP(rec, req)
-	wantStatus(t, rec, http.StatusBadGateway)
-}
-
-func TestResults(t *testing.T) {
-	e := newEnv(t)
-	for _, candidateID := range []int{2, 2, 1} {
-		e.store.votes = append(e.store.votes, model.Vote{ElectionID: 1, CandidateID: candidateID})
-	}
-	rec := e.do("GET", "/results/1", "", "")
-	wantStatus(t, rec, http.StatusOK)
-
-	var got model.Results
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	want := []model.CandidateResult{
-		{CandidateID: 2, CandidateName: "Luis Herrera", Votes: 2, Percentage: 66.67},
-		{CandidateID: 1, CandidateName: "Ana Torres", Votes: 1, Percentage: 33.33},
-		{CandidateID: 3, CandidateName: "Camila Duarte", Votes: 0, Percentage: 0},
-	}
-	if got.ElectionID != 1 || got.TotalVotes != 3 || len(got.Results) != len(want) {
-		t.Fatalf("respuesta inesperada: %+v", got)
-	}
-	for i := range want {
-		if got.Results[i] != want[i] {
-			t.Fatalf("posición %d: %+v, se esperaba %+v", i, got.Results[i], want[i])
-		}
-	}
-
-	wantStatus(t, e.do("GET", "/results/99", "", ""), http.StatusNotFound)
-	wantStatus(t, e.do("GET", "/results/abc", "", ""), http.StatusUnprocessableEntity)
-}
-
-func TestCORSPreflight(t *testing.T) {
-	e := newEnv(t)
-	req := httptest.NewRequest("OPTIONS", "/votes", nil)
-	req.Header.Set("Origin", "http://localhost:3000")
-	rec := httptest.NewRecorder()
-	e.app.ServeHTTP(rec, req)
-	wantStatus(t, rec, http.StatusNoContent)
-	if rec.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" ||
-		!strings.Contains(rec.Header().Get("Access-Control-Allow-Headers"), "Authorization") {
-		t.Fatalf("headers CORS inesperados: %v", rec.Header())
+// Las rutas del P1 ya no existen: los resultados están en agr-results-lo.
+func TestUnknownRoutes(t *testing.T) {
+	e := newEnv()
+	for _, path := range []string{"/results/1", "/nada"} {
+		rec := httptest.NewRecorder()
+		e.app.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		wantStatus(t, rec, http.StatusNotFound)
+		wantDetail(t, rec)
 	}
 }

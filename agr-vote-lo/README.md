@@ -1,211 +1,158 @@
-# Vote Service (Go)
+# agr-vote-lo: Vote Service (Go)
 
-Recibe el voto, lo valida con el Election Service y el Voter Service, guarda el voto anónimo en MongoDB
-y calcula los resultados. Es el único dueño de la Votes DB. Escucha en el puerto 8002.
+Guarda el voto anónimo en `agr-votes-db` (MongoDB) y avisa al resto del sistema publicando el evento
+`VoteRegistered` en `agr-broker-as` (RabbitMQ). Responsable: Maicol. Puerto interno: 8002 (no se publica).
 
-Hace parte del [sistema de votación](../README.md); los contratos con los otros servicios están en la
-sección 6 de ese documento.
+En el Prototipo 2 **ya no orquesta**: la validación de la elección, el marcado del votante y la compensación los
+hace la saga de `agr-gateway-or`, y los resultados los calcula `agr-results-lo`. Este servicio solo lo llama el
+gateway (conector c6), nunca el navegador.
 
 ```mermaid
 flowchart LR
-  FE["Front-end"] -- REST --> TS["Vote Service<br/>Go, :8002"]
-  TS -- REST --> ES["Election Service<br/>:8000"]
-  TS -- REST --> VS["Voter Service<br/>:8001"]
-  TS -. Database connector .-> TDB[("Votes DB<br/>MongoDB")]
+  GW["agr-gateway-or"] -- "c6 REST<br/>X-Service-Key + Idempotency-Key" --> VT["agr-vote-lo<br/>Go, :8002"]
+  VT -. "c14 conector BD" .-> DB[("agr-votes-db<br/>MongoDB")]
+  VT -- "c8 AMQP: VoteRegistered<br/>con confirmación" --> BR[["agr-broker-as<br/>RabbitMQ"]]
 ```
-
-## Cómo ejecutarlo
-
-Requisitos: Docker con el motor corriendo. No hace falta instalar Go.
-
-Desde la raíz del repositorio:
-
-```bash
-# Todo el sistema
-docker compose up --build
-
-# Solo el Vote Service y lo que necesita (votes-db, election-service y elections-db)
-docker compose up --build vote-service
-
-# Logs
-docker compose logs -f vote-service
-```
-
-Queda disponible en http://localhost:8002. Detener: `docker compose down`. Detener y borrar los votos
-guardados: `docker compose down -v`.
-
-El compose levanta dos contenedores para este componente: el servicio `vote-service` (este código,
-contenedor `agr-vote-lo`) y el servicio `votes-db` (contenedor `agr-votes-db`, imagen `mongo:7`, sin puerto
-publicado, con los datos en el volumen `votes-db-data`).
 
 ## Endpoints
 
 | Método y ruta | Descripción |
 |---|---|
-| `GET /health` | `200 {"status": "ok"}` |
-| `POST /votes` | Registra un voto. Requiere `Authorization: Bearer <jwt>` |
-| `GET /results/{election_id}` | Conteo y porcentaje por candidato (público) |
-
-Los errores siempre son JSON `{"detail": "mensaje"}`.
-
-### `POST /votes`
+| `GET /health` | `200 {"status": "ok"}` si MongoDB responde; `503` si no |
+| `POST /votes` | Guarda un voto. Exige `X-Service-Key` e `Idempotency-Key` |
 
 ```json
-// Petición
-{"election_id": 1, "candidate_id": 2}
+// POST /votes   (X-Service-Key: <llave>, Idempotency-Key: <uuid aleatorio del gateway>)
+{"election_id": 1, "candidate_id": 2, "candidate_name": "Luis Herrera"}
 // 201
 {"status": "recorded"}
 ```
 
 | Código | Cuándo |
 |---|---|
-| 401 | Falta el header `Authorization`, o el token es inválido o expiró |
-| 404 | La elección no existe |
-| 409 | La elección no está abierta, o el votante ya votó |
-| 422 | El candidato no pertenece a la elección, o el cuerpo es inválido |
-| 502 | El Election Service o el Voter Service no responden |
-| 500 | Falló el guardado del voto (ya se compensó) |
+| 201 | Voto guardado. **También si la `Idempotency-Key` ya existía con el mismo voto** (el gateway reintentó) |
+| 401 | Falta `X-Service-Key` o no coincide |
+| 409 | La `Idempotency-Key` ya se usó con **otro** voto |
+| 422 | Falta `Idempotency-Key`, o el cuerpo es inválido (ids no positivos, sin `candidate_name`) |
+| 500 | MongoDB no aceptó el voto. El gateway compensa desmarcando al votante |
 
-Pasos, en este orden:
+Errores siempre como `{"detail": "mensaje"}`.
 
-1. Valida el cuerpo y que venga el header `Authorization`.
-2. `GET {ELECTION_SERVICE_URL}/elections/{id}`: revisa que exista, que `is_open` sea verdadero y que el
-   candidato esté en `candidates`. Se hace antes de marcar para no dejar votantes marcados por una
-   elección cerrada.
-3. `POST {VOTER_SERVICE_URL}/voters/mark-voted`, reenviando el `Authorization` del cliente y agregando
-   `X-Service-Key`. Si responde 401 o 409, se devuelve lo mismo al cliente.
-4. Inserta el voto en `votes`.
-5. Si el paso 4 falla, llama a `POST /voters/unmark-voted` (compensación) y responde 500.
-6. Registra el evento en `audit`. Si falla, solo queda en el log; no se deshace el voto.
-7. Responde 201.
+## Cómo funciona
 
-### `GET /results/{election_id}`
+**Guardado idempotente.** El voto se inserta con su `idempotency_key`, que tiene índice único. Si el gateway no
+recibió respuesta y reintenta con la misma llave, la inserción choca con el índice, el servicio comprueba que sea
+el mismo voto y responde 201 sin duplicarlo.
+
+**Outbox.** El voto se guarda con `published: false` en el mismo documento (en MongoDB la escritura de un documento
+es atómica). Luego:
+
+1. Después de responder, una *goroutine* publica `VoteRegistered` en el exchange `agora.votes` y **espera la
+   confirmación del broker** (*publisher confirms*). Con el ack marca `published: true`.
+2. Otra *goroutine* revisa cada 5 s (`OUTBOX_INTERVAL`) los votos que sigan en `false` y los vuelve a publicar.
+   También lo hace al arrancar.
+
+Así, si RabbitMQ está caído cuando se guarda el voto, el evento sale cuando vuelva. La entrega es **al menos una
+vez**: los consumidores descartan repetidos por `event_id`. Un índice parcial sobre `published: false` hace que la
+revisión periódica no recorra los votos ya publicados.
+
+**Conexión al broker.** Se abre la primera vez que se necesita y se reabre sola si se cae. Al conectarse comprueba
+(de forma pasiva) que el exchange exista: la topología es de `agr-broker-as`, este servicio no la crea. Publica con
+`mandatory`: si el exchange no tuviera colas enlazadas, el evento se queda pendiente en vez de perderse.
+
+**Anonimato.**
+
+- El voto no lleva ningún dato del votante: el gateway no los envía y el servicio no los acepta.
+- `cast_at` y `occurred_at` se redondean a la hora.
+- El `_id` del voto (que viaja como `event_id`) son 12 bytes **aleatorios**, no un `ObjectId` de MongoDB, porque
+  el `ObjectId` lleva la hora exacta de creación.
+- El mensaje AMQP no lleva `timestamp`, por la misma razón.
+- Los logs registran método, ruta, código y duración; nunca el cuerpo.
+
+## Contrato del evento `VoteRegistered`
+
+Exchange `agora.votes` (fanout). Mensaje persistente, `content-type: application/json`, `message-id` y `type`
+iguales a `event_id` y `type`:
 
 ```json
 {
+  "event_id": "6720f3a1c2b9e8a4d1f00a17",
+  "type": "VoteRegistered",
+  "version": 1,
   "election_id": 1,
-  "total_votes": 3,
-  "results": [
-    {"candidate_id": 2, "candidate_name": "Luis Herrera", "votes": 2, "percentage": 66.67},
-    {"candidate_id": 1, "candidate_name": "Ana Torres", "votes": 1, "percentage": 33.33},
-    {"candidate_id": 3, "candidate_name": "Camila Duarte", "votes": 0, "percentage": 0}
-  ]
+  "candidate_id": 2,
+  "occurred_at": "2026-11-03T14:00:00Z"
 }
 ```
 
-Ordenado de más a menos votos; incluye a los candidatos con 0 votos. 404 si la elección no existe.
+## Datos: `agr-votes-db`
 
-## Cómo probarlo
+MongoDB 7, base `votes`, colección `votes`:
 
-```bash
-curl http://localhost:8002/health
-curl http://localhost:8002/results/1
-
-# Votar (el token sale de POST /auth/login del Voter Service)
-curl -i -X POST http://localhost:8002/votes \
-  -H "Authorization: Bearer <jwt>" \
-  -H "Content-Type: application/json" \
-  -d '{"election_id": 1, "candidate_id": 2}'
-
-# Ver los votos guardados (no llevan datos del votante)
-docker compose exec votes-db mongosh votes --eval "db.votes.find()"
+```json
+{"_id": "6720f3a1c2b9e8a4d1f00a17", "election_id": 1, "candidate_id": 2, "candidate_name": "Luis Herrera",
+ "cast_at": ISODate("2026-11-03T14:00:00Z"), "published": true, "idempotency_key": "<uuid del gateway>"}
 ```
 
-El token se obtiene con `POST http://localhost:8001/auth/login` y el cuerpo
-`{"document": "1000000001", "password": "voter123"}` (hay cinco votantes de prueba, del `1000000001` al
-`1000000005`). Si el Voter Service no está arriba, `POST /votes` responde
-`502 {"detail": "El Voter Service no responde"}`.
+| Índice | Para qué |
+|---|---|
+| `idempotency_key_unique` (único) | Un voto por llave: el reintento no duplica |
+| `published_pending` (parcial, `published: false`) | La revisión del outbox solo ve los pendientes |
 
-En Windows PowerShell usen `curl.exe` en lugar de `curl`.
+Tiene usuario y clave propios (`VOTES_DB_USER`, `VOTES_DB_PASSWORD`): solo este servicio los conoce. Volumen
+`votes-db-data`.
 
-## Pruebas
+> Si venían del Prototipo 1, borren el volumen viejo una vez (`docker compose down -v`): aquel MongoDB no tenía
+> usuario y el nuevo sí.
 
-Desde esta carpeta (`vote-service/`), en un contenedor:
-
-```bash
-docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine go test ./...
-```
-
-Con Go 1.23 o superior instalado basta `go test ./...`. Las pruebas simulan MongoDB, el Election Service
-y el Voter Service, así que no necesitan el compose. Hay dos grupos: `internal/service` prueba la lógica
-sola y `internal/handler` recorre todas las capas por HTTP.
-
-Las pruebas de punta a punta levantan el Vote Service, MongoDB y el Election Service reales en un
-proyecto de Compose aparte (solo el Voter Service es simulado) y lo borran al terminar. Desde la raíz
-del repositorio:
-
-```bash
-./vote-service/e2e/run.sh
-```
-
-## Variables de entorno
-
-Todas tienen valor por defecto; el compose ya las define.
-
-| Variable | Por defecto | Uso |
-|---|---|---|
-| `PORT` | `8002` | Puerto en el que escucha |
-| `MONGO_URI` | `mongodb://votes-db:27017` | Conexión a MongoDB |
-| `MONGO_DB` | `votes` | Nombre de la base |
-| `ELECTION_SERVICE_URL` | `http://election-service:8000` | Dónde está el Election Service |
-| `VOTER_SERVICE_URL` | `http://voter-service:8001` | Dónde está el Voter Service |
-| `SERVICE_API_KEY` | `dev-service-key` | Llave que se envía en `X-Service-Key` al Voter Service |
-| `CORS_ORIGINS` | `http://localhost:3000` | Orígenes permitidos (separados por coma) |
-
-## Datos (MongoDB)
-
-Base `votes`, dos colecciones. Ninguna guarda datos del votante.
-
-- `votes`: `{election_id, candidate_id, candidate_name, cast_at}`, con índice sobre
-  `{election_id: 1, candidate_id: 1}`. `cast_at` se redondea a la hora para que no se pueda cruzar con el
-  momento exacto en que el votante fue marcado.
-- `audit`: `{type: "vote_registered", election_id, at}`, con `at` redondeado igual.
-
-## Estructura del código
-
-Arquitectura por capas. Cada capa solo depende de la que tiene debajo, y la capa de servicio usa
-interfaces, así que no conoce ni HTTP ni MongoDB.
-
-```mermaid
-flowchart TB
-  H["handler<br/>HTTP: rutas, CORS, códigos de respuesta"]
-  S["service<br/>flujo de votación, compensación y resultados"]
-  R["repository<br/>MongoDB"]
-  C["client<br/>REST hacia Election y Voter Service"]
-  H --> S
-  S --> R
-  S --> C
-```
-
-```
-vote-service/
-├── main.go                  arma las capas y arranca el servidor
-├── internal/
-│   ├── config/              configuración por variables de entorno
-│   ├── handler/             capa HTTP
-│   ├── service/             capa de lógica
-│   ├── repository/          capa de datos (MongoDB)
-│   ├── client/              conectores REST a los otros servicios
-│   └── model/               tipos del dominio que comparten las capas
-├── e2e/                     pruebas de punta a punta
-└── Dockerfile
-```
+## Capas (`internal/`)
 
 | Paquete | Responsabilidad |
 |---|---|
-| `main.go` | Arranque: configuración, conexión a MongoDB, armado de las capas, servidor HTTP y apagado ordenado |
-| `internal/handler` | Rutas (`net/http`), los tres endpoints y el middleware de CORS. Lee la petición, llama al servicio y traduce sus errores a códigos HTTP |
-| `internal/service` | El flujo de `POST /votes` (validar, marcar, guardar, compensar) y el cálculo de resultados. Define las interfaces `VoteStore`, `ElectionGateway` y `VoterGateway` |
-| `internal/repository` | Conector a MongoDB: inserción de votos y auditoría, índice y agregación de resultados |
-| `internal/client` | Conector REST hacia el Election Service y el Voter Service (timeout de 5 segundos) |
-| `internal/model` | `Vote`, `AuditEvent`, `Election`, `Candidate`, `Results` y los errores del dominio |
-| `internal/config` | Lee la configuración de variables de entorno |
-| `Dockerfile` | Compila en `golang:1.23-alpine` y ejecuta el binario en `alpine:3.20` |
+| `handler` | HTTP: lee la petición, verifica `X-Service-Key` (tiempo constante), traduce errores a códigos |
+| `service` | Reglas de negocio: valida el voto, genera el `_id`, redondea la hora, maneja la llave repetida |
+| `repository` | Único acceso a MongoDB: inserción, búsqueda por llave, pendientes del outbox, índices |
+| `outbox` | Publicación inmediata y revisión periódica de los votos sin publicar |
+| `publisher` | Único acceso a RabbitMQ: conexión, confirmaciones, formato del mensaje |
+| `model` | Tipos compartidos: `Vote`, `VoteRegistered` |
+| `config` | Variables de entorno |
 
-Al arrancar espera a que MongoDB responda (reintenta hasta 30 veces, una por segundo) y crea el índice.
+## Variables de entorno
 
-Si cambian dependencias, generen de nuevo `go.sum` y súbanlo junto con `go.mod`:
+| Variable | Por defecto |
+|---|---|
+| `PORT` | `8002` |
+| `MONGO_URI` | `mongodb://agr-votes-db:27017` (el compose agrega usuario y clave) |
+| `MONGO_DB` | `votes` |
+| `AMQP_URL` | `amqp://agora:agora@agr-broker-as:5672/` |
+| `VOTES_EXCHANGE` | `agora.votes` |
+| `SERVICE_API_KEY` | `dev-service-key` |
+| `OUTBOX_INTERVAL` | `5s` |
+| `OUTBOX_BATCH` | `100` |
+
+## Cómo ejecutarlo y probarlo
+
+Desde la raíz del repositorio:
 
 ```bash
-docker run --rm -v "$PWD":/src -w /src golang:1.23-alpine go mod tidy
+docker compose up --build -d --wait agr-vote-lo   # levanta también agr-votes-db y agr-broker-as
+docker compose logs -f agr-vote-lo
 ```
+
+**Pruebas unitarias** (no necesitan Docker ni base de datos; las dependencias se simulan):
+
+```bash
+cd agr-vote-lo
+go test -race -cover ./...
+```
+
+**Pruebas de punta a punta** contra MongoDB y RabbitMQ reales, en un proyecto de Compose aparte que se borra al
+terminar (no toca sus datos):
+
+```bash
+./agr-vote-lo/e2e/run.sh
+```
+
+Comprueban: la topología del broker, que el voto se guarde con exactamente los campos esperados, que el evento
+cumpla el contrato y llegue a las colas de resultados y auditoría, la idempotencia, los rechazos y que el outbox
+publique un voto pendiente.

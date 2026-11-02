@@ -43,6 +43,33 @@ jobs:
       - name: Pruebas unitarias
         run: go test -race -cover ./...
 
+  admin-cli-unit:
+    name: CLI de administración - pruebas unitarias
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agr-admin-fr
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agr-admin-fr/go.mod
+          cache-dependency-path: agr-admin-fr/go.sum
+      - name: Formato (gofmt)
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Archivos sin formatear (corran gofmt -w):"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go.mod y go.sum al día
+        run: go mod tidy -diff
+      - name: Pruebas unitarias
+        run: go test -race -cover -coverpkg=./internal/... ./...
+
   election-service-unit:
     name: Election Service - pruebas unitarias
     runs-on: ubuntu-latest
@@ -74,7 +101,7 @@ jobs:
         run: npm test
 
   e2e:
-    name: Vote Service - pruebas de punta a punta
+    name: Vote Service y Broker - pruebas de punta a punta
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,9 +121,11 @@ jobs:
         run: |
           curl --fail --silent --show-error http://localhost:8000/health
           curl --fail --silent --show-error http://localhost:8080/health
-          curl --fail --silent --show-error http://localhost:8002/health
-          curl --fail --silent --show-error http://localhost:8002/results/1
           curl --fail --silent --show-error --output /dev/null http://localhost:3000
+          # Consola de RabbitMQ y topología cargada desde definitions.json
+          curl --fail --silent --show-error --user agora:agora http://localhost:15672/api/exchanges/%2F/agora.votes
+          # CLI de administración contra el gateway
+          docker compose run --rm agr-admin-fr elections list
       - name: Logs (si algo falló)
         if: failure()
         run: docker compose logs --no-color --tail 100
@@ -106,7 +135,7 @@ jobs:
 
   publish:
     name: Publicar imagen del Vote Service (GHCR)
-    needs: [vote-service-unit, election-service-unit, e2e, system]
+    needs: [vote-service-unit, admin-cli-unit, election-service-unit, e2e, system]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

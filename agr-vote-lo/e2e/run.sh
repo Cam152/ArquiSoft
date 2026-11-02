@@ -13,7 +13,7 @@ status=$?
 
 if [ "$status" -ne 0 ]; then
   echo "--- Las pruebas fallaron. Logs de los servicios:"
-  compose logs --no-color --tail 50 vote-service election-service mock-voter-service
+  compose logs --no-color --tail 50 agr-vote-lo agr-votes-db agr-broker-as
 fi
 compose down --volumes --remove-orphans
 exit "$status"

@@ -434,23 +434,27 @@ puerto publicado en un *override*).
 **Qué hace.** Es el componente de procesos asíncronos: recibe cada `VoteRegistered` y lo entrega a todos los que lo
 necesitan, aunque en ese momento estén caídos.
 
-**Cómo lo hace.** La topología se declara en `agr-broker-as/definitions.json` y RabbitMQ la carga al arrancar, así
-nadie crea colas a mano:
+**Cómo lo hace.** La topología se declara en `agr-broker-as/definitions.template.json` y RabbitMQ la carga al
+arrancar, así nadie crea colas a mano (detalles en [`agr-broker-as/README.md`](agr-broker-as/README.md)):
 
 | Elemento | Configuración | Para qué |
 |---|---|---|
 | Exchange `agora.votes` | Tipo `fanout`, durable | Copia cada evento a todas sus colas |
-| Cola `results.vote-registered` | `quorum`, `x-delivery-limit: 5`, *dead-letter* a `agora.dlx` | Eventos para `agr-results-lo` |
-| Cola `audit.vote-registered` | `quorum`, `x-delivery-limit: 5`, *dead-letter* a `agora.dlx` | Eventos para `agr-audit-lo` |
-| Exchange `agora.dlx` y colas `results.dead`, `audit.dead` | Durables | Guardan los mensajes que fallaron 5 veces, para revisarlos |
+| Cola `results.vote-registered` | `quorum`, `x-delivery-limit: 5`, *dead-letter* a `agora.dlx` (clave `results.dead`) | Eventos para `agr-results-lo` |
+| Cola `audit.vote-registered` | `quorum`, `x-delivery-limit: 5`, *dead-letter* a `agora.dlx` (clave `audit.dead`) | Eventos para `agr-audit-lo` |
+| Exchange `agora.dlx` (`direct`) y colas `results.dead`, `audit.dead` | Durables | Guardan los mensajes que fallaron 5 veces, cada uno en la cola de su consumidor |
 
 - Los mensajes se publican como **persistentes** y con **confirmación del broker**: sobreviven a un reinicio.
 - Los consumidores usan ***ack* manual**: un mensaje solo se borra cuando el consumidor terminó de procesarlo. Si el
   consumidor cae a mitad, RabbitMQ lo reentrega.
 - RabbitMQ garantiza entrega **al menos una vez**; por eso los consumidores descartan eventos repetidos.
 - Para agregar otro consumidor basta con crear una cola nueva enlazada a `agora.votes`, sin tocar `agr-vote-lo`.
+- Los consumidores **no declaran** las colas (o lo hacen en modo pasivo): si las declaran con otros argumentos,
+  RabbitMQ responde `PRECONDITION_FAILED`.
 
-**Imagen:** `rabbitmq:3-management-alpine`, volumen `broker-data`, puerto AMQP 5672 interno y consola web en 15672.
+**Imagen:** `./agr-broker-as` (sobre `rabbitmq:3.13-management-alpine`), volumen `broker-data`, puerto AMQP 5672
+interno y consola web en 15672. Con definiciones al arrancar RabbitMQ no crea el usuario por defecto, así que un
+`entrypoint.sh` agrega a las definiciones el usuario de `BROKER_USER` y `BROKER_PASSWORD`.
 
 ### 4.9 Results Service y Results DB: `agr-results-lo` (Rust) y `agr-results-db` (Redis)
 
@@ -562,7 +566,7 @@ credenciales: cada servicio solo conoce las de la suya.
 | `agr-vote-lo` | `./agr-vote-lo` | no | ninguno | `GET /health` | `agr-votes-db`, `agr-broker-as` |
 | `agr-results-lo` | `./agr-results-lo` | no | ninguno | `GET /health` | `agr-results-db`, `agr-broker-as` |
 | `agr-audit-lo` | `./agr-audit-lo` | no | ninguno | `GET /health` | `agr-audit-db`, `agr-broker-as` |
-| `agr-broker-as` | `rabbitmq:3-management-alpine` | `15672:15672` | `broker-data` | `rabbitmq-diagnostics ping` | nada |
+| `agr-broker-as` | `./agr-broker-as` (`rabbitmq:3.13-management-alpine`) | `15672:15672` | `broker-data` | `rabbitmq-diagnostics check_port_connectivity` | nada |
 | `agr-auth-db`, `agr-voters-db`, `agr-elections-db` | `postgres:16-alpine` | no | uno por base | `pg_isready` | nada |
 | `agr-votes-db`, `agr-audit-db` | `mongo:7` | no | uno por base | `mongosh` (ping) | nada |
 | `agr-results-db` | `redis:7-alpine` (`appendonly yes`) | no | `results-db-data` | `redis-cli ping` | nada |
@@ -804,6 +808,7 @@ Se cambian copiando `.env.example` a `.env`. Todas tienen un valor por defecto e
 | `AUTH_DB_USER`, `AUTH_DB_PASSWORD`, `AUTH_DB_NAME` | Auth DB y Auth Service | `auth` | Credenciales de la base |
 | `VOTERS_DB_USER`, `VOTERS_DB_PASSWORD`, `VOTERS_DB_NAME` | Voters DB y Voter Service | `voters` | Credenciales de la base |
 | `ELECTIONS_DB_USER`, `ELECTIONS_DB_PASSWORD`, `ELECTIONS_DB_NAME` | Elections DB y Election Service | `elections` | Credenciales de la base |
+| `VOTES_DB_USER`, `VOTES_DB_PASSWORD` | Votes DB y Vote Service | `votes` | Credenciales de la base |
 | `VOTES_MONGO_DB` | Vote Service | `votes` | Base de MongoDB de los votos |
 | `AUDIT_MONGO_DB` | Audit Service | `audit` | Base de MongoDB de la auditoría |
 | `BROKER_USER`, `BROKER_PASSWORD` | Broker y sus clientes | `agora` | Credenciales de RabbitMQ y de la consola |
@@ -860,7 +865,7 @@ Variables que el compose arma y no se cambian por `.env`: las URLs de cada base 
 ├── agr-audit-lo/               (C#, .NET)
 │   └── Consumers/, Services/, Repositories/, Controllers/
 └── agr-broker-as/              (RabbitMQ)
-    └── definitions.json, rabbitmq.conf
+    └── definitions.template.json, rabbitmq.conf, entrypoint.sh
 ```
 
 Las bases de datos no tienen carpeta: usan imágenes oficiales (`postgres:16-alpine`, `mongo:7`, `redis:7-alpine`)

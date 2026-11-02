@@ -99,13 +99,17 @@ services:
 
 
   # ============================================================
-  # DATOS - VOTOS
+  # DATOS - VOTOS (responsable: Maicol)
   # ============================================================
-  votes-db:
+  # Votos anónimos. Con usuario y clave propios: solo agr-vote-lo los conoce.
+  agr-votes-db:
     container_name: agr-votes-db
     image: mongo:7
     # --quiet evita registrar cada conexión del healthcheck
     command: ["mongod", "--quiet"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${VOTES_DB_USER:-votes}
+      MONGO_INITDB_ROOT_PASSWORD: ${VOTES_DB_PASSWORD:-votes}
     volumes:
       - votes-db-data:/data/db
     healthcheck:
@@ -117,26 +121,49 @@ services:
 
 
   # ============================================================
-  # LÓGICA - VOTE SERVICE
+  # ASINCRONÍA - BROKER (responsable: Maicol)
   # ============================================================
-  vote-service:
+  # RabbitMQ con la topología de agr-broker-as/definitions.template.json
+  # (exchange agora.votes, colas de resultados y auditoría, dead-letter).
+  agr-broker-as:
+    container_name: agr-broker-as
+    # Nombre de host fijo: RabbitMQ guarda sus datos por nombre de nodo, así que
+    # si cambia (Docker pone uno al azar) los mensajes del volumen se pierden.
+    hostname: agr-broker-as
+    build: ./agr-broker-as
+    environment:
+      BROKER_USER: ${BROKER_USER:-agora}
+      BROKER_PASSWORD: ${BROKER_PASSWORD:-agora}
+    ports:
+      - "15672:15672"   # consola web; AMQP (5672) solo dentro de Docker
+    volumes:
+      - broker-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+
+  # ============================================================
+  # LÓGICA - VOTE SERVICE (responsable: Maicol)
+  # ============================================================
+  # Guarda el voto y publica VoteRegistered (outbox). Solo lo llama el gateway.
+  agr-vote-lo:
     container_name: agr-vote-lo
     build: ./agr-vote-lo
     environment:
-      MONGO_URI: mongodb://votes-db:27017
-      MONGO_DB: ${MONGO_DB:-votes}
-      ELECTION_SERVICE_URL: http://election-service:8000
-      VOTER_SERVICE_URL: http://voter-service:8001
+      MONGO_URI: mongodb://${VOTES_DB_USER:-votes}:${VOTES_DB_PASSWORD:-votes}@agr-votes-db:27017/?authSource=admin
+      MONGO_DB: ${VOTES_MONGO_DB:-votes}
+      AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/
       SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    ports:
-      - "8002:8002"
     depends_on:
-      votes-db:
+      agr-votes-db:
         condition: service_healthy
-      election-service:
+      agr-broker-as:
         condition: service_healthy
-      # No espera al voter-service: responde 502 si no está disponible al votar.
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8002/health"]
       interval: 10s
@@ -144,7 +171,21 @@ services:
       retries: 6
       start_period: 15s
     restart: unless-stopped
-    
+
+
+  # ============================================================
+  # PRESENTACIÓN - CLI DE ADMINISTRACIÓN (responsable: Maicol)
+  # ============================================================
+  # No corre con "up" (perfil tools). Uso:
+  #   docker compose run --rm agr-admin-fr elections list
+  agr-admin-fr:
+    container_name: agr-admin-fr
+    build: ./agr-admin-fr
+    profiles: ["tools"]
+    environment:
+      AGORA_GATEWAY_URL: http://agr-gateway-or:8080
+      AGORA_ADMIN_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+
   agr-auth-db:
     image: postgres:16-alpine
     container_name: agr-auth-db
@@ -204,6 +245,8 @@ services:
         condition: service_healthy
       agr-auth-lo:
         condition: service_started
+      agr-vote-lo:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
@@ -230,7 +273,7 @@ services:
         condition: service_healthy
       voter-service:
         condition: service_healthy
-      vote-service:
+      agr-vote-lo:
         condition: service_healthy
     restart: unless-stopped
 
@@ -242,4 +285,5 @@ volumes:
   elections-db-data:
   voters-db-data:
   votes-db-data:
+  broker-data:
   agr_auth_db_data:
