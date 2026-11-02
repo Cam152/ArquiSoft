@@ -2,7 +2,13 @@
 FROM golang:1.23-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+# Reintenta la descarga: el proxy de módulos a veces falla en CI (TLS handshake timeout).
+RUN for i in 1 2 3; do \
+      go mod download && exit 0; \
+      echo "go mod download falló (intento $i/3), reintentando..."; \
+      sleep 5; \
+    done; \
+    exit 1
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /vote-service .
 
