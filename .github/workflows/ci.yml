@@ -130,6 +130,25 @@ jobs:
       - name: Pruebas contra servicios simulados
         run: npm test
 
+  web:
+    name: Web (Next.js) - pruebas y compilación
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agr-web-fr
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: agr-web-fr/package-lock.json
+      - run: npm ci
+      - name: Pruebas de lib/
+        run: npm test
+      - name: Compilación y revisión de tipos
+        run: npm run build
+
   results-service:
     name: Results Service - formato, lint y pruebas (Redis y RabbitMQ reales)
     runs-on: ubuntu-latest
@@ -183,8 +202,12 @@ jobs:
         run: docker compose up --build --detach --wait --wait-timeout 180
       - name: Comprobar cada componente
         run: |
-          curl --fail --silent --show-error http://localhost:8000/health
+          # Solo se publican 3000, 8080 y 15672: los servicios se prueban a través del gateway
           curl --fail --silent --show-error http://localhost:8080/health
+          curl --fail --silent --show-error --output /dev/null http://localhost:8080/elections
+          curl --fail --silent --show-error --output /dev/null http://localhost:8080/results/1
+          # Web (SSR): healthcheck y página de inicio generada en el servidor
+          curl --fail --silent --show-error http://localhost:3000/api/health
           curl --fail --silent --show-error --output /dev/null http://localhost:3000
           # Consola de RabbitMQ y topología cargada desde definitions.json
           curl --fail --silent --show-error --user agora:agora http://localhost:15672/api/exchanges/%2F/agora.votes

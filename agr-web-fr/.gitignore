@@ -1,0 +1,10 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.env*.local
+
+# El .gitignore de la raíz ignora cualquier carpeta "lib/" (plantilla de Python).
+# Aquí lib/ es código fuente (lib/api, sesión, SSE), así que se vuelve a incluir.
+!lib/

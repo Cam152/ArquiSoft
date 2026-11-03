@@ -34,3 +34,6 @@ services:
     depends_on:
       agr-vote-lo:
         condition: service_healthy
+    # Con las redes del Prototipo 2 hay que unir el contenedor de pruebas a ellas:
+    # sin esto queda en la red "default" y no alcanza a agr-vote-lo, la base ni el broker.
+    networks: [agr-back, agr-data]

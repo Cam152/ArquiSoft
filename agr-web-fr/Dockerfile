@@ -1,23 +1,36 @@
-# ---- Compilación ----
-FROM node:20-alpine AS build
+# agr-web-fr: Next.js con SSR. Tres etapas: la imagen final no lleva el
+# compilador ni node_modules completo, solo la salida "standalone" de Next.js.
+# Node 22 (LTS), igual que agr-gateway-or. Node 20 dejó de recibir soporte en abril de 2026.
+
+# ---- Dependencias ----
+FROM node:22-alpine AS deps
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
-COPY package.json package-lock.json* ./
-RUN npm install
-
+# ---- Compilación ----
+FROM node:22-alpine AS build
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# URLs de los servicios tal como las ve el navegador (se fijan al compilar)
-ARG VITE_ELECTION_API_URL=http://localhost:8000
-ARG VITE_VOTER_API_URL=http://localhost:8001
-ARG VITE_VOTE_API_URL=http://localhost:8002
-ENV VITE_ELECTION_API_URL=$VITE_ELECTION_API_URL
-ENV VITE_VOTER_API_URL=$VITE_VOTER_API_URL
-ENV VITE_VOTE_API_URL=$VITE_VOTE_API_URL
+# No hace falta el gateway para compilar: las páginas se generan en cada petición.
 RUN npm run build
 
-# ---- Servidor estático ----
-FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 80
+# ---- Ejecución ----
+FROM node:22-alpine AS run
+WORKDIR /app
+# HOSTNAME=0.0.0.0: sin esto, server.js escucha solo en la IP del contenedor y el
+# healthcheck contra 127.0.0.1 falla.
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
+# Si más adelante agregan archivos en public/ (logo, favicon), copien también:
+# COPY --from=build --chown=node:node /app/public ./public
+USER node
+EXPOSE 3000
+# GATEWAY_INTERNAL_URL y NEXT_PUBLIC_GATEWAY_URL se leen al ejecutar (docker-compose.yml).
+CMD ["node", "server.js"]
