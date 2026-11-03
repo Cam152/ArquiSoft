@@ -1,37 +1,28 @@
 package com.arquisoft.voterservice.service;
 
-import com.arquisoft.voterservice.model.Voter;
-import com.arquisoft.voterservice.repository.VoterRepository;
+import com.arquisoft.voterservice.repository.BallotRepository;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Reglas de participación: un votante vota una sola vez en cada elección.
+ */
 @Service
 public class VoterService {
 
-    private final VoterRepository voterRepository;
+    private final BallotRepository ballots;
 
-    public VoterService(VoterRepository voterRepository) {
-        this.voterRepository = voterRepository;
+    public VoterService(BallotRepository ballots) {
+        this.ballots = ballots;
     }
 
-    public Voter findByDocument(String document) {
-        return voterRepository
-                .findByDocument(document)
-                .orElse(null);
+    /** Marca la participación. Devuelve false si ya había votado en esa elección. */
+    public boolean markVoted(long voterId, long electionId) {
+        return ballots.insert(voterId, electionId) == 1;
     }
 
-    @Transactional
-    public boolean markVoted(Long voterId) {
-
-        int updated = voterRepository.markVoted(voterId);
-
-        return updated == 1;
-    }
-
-    @Transactional
-    public void unmarkVoted(Long voterId) {
-
-        voterRepository.unmarkVoted(voterId);
+    /** Compensación de la saga. Idempotente: desmarcar algo que no existe no es error. */
+    public void unmarkVoted(long voterId, long electionId) {
+        ballots.delete(voterId, electionId);
     }
 }

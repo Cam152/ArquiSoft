@@ -1,0 +1,116 @@
+{
+  "rabbit_version": "3.13",
+  "vhosts": [
+    { "name": "/" }
+  ],
+  "users": [
+    {
+      "name": "__BROKER_USER__",
+      "password": "__BROKER_PASSWORD__",
+      "tags": ["administrator"]
+    }
+  ],
+  "permissions": [
+    {
+      "user": "__BROKER_USER__",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "agora.votes",
+      "vhost": "/",
+      "type": "fanout",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "agora.dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "results.vote-registered",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 5,
+        "x-dead-letter-exchange": "agora.dlx",
+        "x-dead-letter-routing-key": "results.dead"
+      }
+    },
+    {
+      "name": "audit.vote-registered",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-delivery-limit": 5,
+        "x-dead-letter-exchange": "agora.dlx",
+        "x-dead-letter-routing-key": "audit.dead"
+      }
+    },
+    {
+      "name": "results.dead",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum" }
+    },
+    {
+      "name": "audit.dead",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": { "x-queue-type": "quorum" }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "agora.votes",
+      "vhost": "/",
+      "destination": "results.vote-registered",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "agora.votes",
+      "vhost": "/",
+      "destination": "audit.vote-registered",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "agora.dlx",
+      "vhost": "/",
+      "destination": "results.dead",
+      "destination_type": "queue",
+      "routing_key": "results.dead",
+      "arguments": {}
+    },
+    {
+      "source": "agora.dlx",
+      "vhost": "/",
+      "destination": "audit.dead",
+      "destination_type": "queue",
+      "routing_key": "audit.dead",
+      "arguments": {}
+    }
+  ]
+}

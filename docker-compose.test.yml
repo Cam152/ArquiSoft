@@ -1,66 +1,21 @@
-# Pruebas de punta a punta del Vote Service. Se usa encima de docker-compose.yml:
+# Pruebas de punta a punta de agr-vote-lo. Se usa encima de docker-compose.yml:
 #   ./agr-vote-lo/e2e/run.sh
-# Agrega un Voter Service simulado y el contenedor que ejecuta las pruebas, y quita
-# los puertos publicados y los nombres fijos de contenedor para no chocar con el
-# sistema si ya está corriendo.
+# Solo arranca lo que el servicio necesita (agr-votes-db y agr-broker-as) más el
+# contenedor que ejecuta las pruebas. Quita los nombres fijos de contenedor y los
+# puertos publicados para no chocar con el sistema si ya está corriendo.
 services:
-  mock-voter-service:
-    build:
-      context: ./agr-vote-lo
-      dockerfile: e2e/mock-voter/Dockerfile
-    environment:
-      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8001/health"]
-      interval: 2s
-      timeout: 2s
-      retries: 10
-
-  elections-db:
+  agr-votes-db:
     container_name: !reset null
 
-  votes-db:
-    container_name: !reset null
-
-  election-service:
+  agr-broker-as:
     container_name: !reset null
     ports: !reset []
 
-  vote-service:
+  agr-vote-lo:
     container_name: !reset null
-    ports: !reset []
     environment:
-      VOTER_SERVICE_URL: http://mock-voter-service:8001
-    depends_on:
-      mock-voter-service:
-        condition: service_healthy
-
-  agr-auth-db:
-    image: postgres:16-alpine
-    container_name: agr-auth-db
-    environment:
-      POSTGRES_DB: agr_auth_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d agr_auth_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  agr-auth-lo:
-    build:
-      context: ./agr-auth-lo
-      dockerfile: Dockerfile
-    container_name: agr-auth-lo
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://agr-auth-db:5432/agr_auth_db
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
-      JWT_SECRET: super-secret-key-agora-proto-2-change-this-in-production-32bytes
-    depends_on:
-      agr-auth-db:
-        condition: service_healthy
+      # Revisión del outbox más frecuente para que las pruebas terminen rápido.
+      OUTBOX_INTERVAL: 1s
 
   e2e:
     image: golang:1.23-alpine
@@ -68,13 +23,17 @@ services:
     volumes:
       - ./agr-vote-lo:/src:ro
     environment:
-      VOTE_SERVICE_URL: http://vote-service:8002
-      ELECTION_SERVICE_URL: http://election-service:8000
-      MONGO_URI: mongodb://votes-db:27017
-      MONGO_DB: ${MONGO_DB:-votes}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      VOTE_SERVICE_URL: http://agr-vote-lo:8002
+      MONGO_URI: mongodb://${VOTES_DB_USER:-votes}:${VOTES_DB_PASSWORD:-votes}@agr-votes-db:27017/?authSource=admin
+      MONGO_DB: ${VOTES_MONGO_DB:-votes}
+      AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
       GOFLAGS: -buildvcs=false
+      CGO_ENABLED: "0"
     command: ["go", "test", "-tags=e2e", "-count=1", "-v", "./e2e/"]
     depends_on:
-      vote-service:
+      agr-vote-lo:
         condition: service_healthy
+    # Con las redes del Prototipo 2 hay que unir el contenedor de pruebas a ellas:
+    # sin esto queda en la red "default" y no alcanza a agr-vote-lo, la base ni el broker.
+    networks: [agr-back, agr-data]

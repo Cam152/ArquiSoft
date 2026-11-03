@@ -1,12 +1,20 @@
-# Sistema de votación - Prototipo 1
-# Levantar todo: docker compose up --build
+# AGORA - Prototipo 2
+# Levantar todo: docker compose up --build -d --wait
+#
+# Convención: el servicio, el contenedor y la carpeta se llaman igual (agr-<nombre>-<nivel>).
+# Redes (vista de despliegue):
+#   agr-front  presentación + gateway        (la presentación solo alcanza al gateway)
+#   agr-back   gateway + servicios de lógica (el gateway llega a los servicios)
+#   agr-data   servicios + bases + broker    (cada servicio llega a su base y al broker)
+# Solo se publican 3000 (web), 8080 (gateway) y 15672 (consola de RabbitMQ). Para
+# depurar un servicio o una base, usen un docker-compose.override.yml local.
 
 services:
 
   # ============================================================
-  # DATOS - ELECCIONES
+  # DATOS - ELECCIONES (responsable: David)
   # ============================================================
-  elections-db:
+  agr-elections-db:
     container_name: agr-elections-db
     image: postgres:16-alpine
     environment:
@@ -20,24 +28,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks: [agr-data]
     restart: unless-stopped
 
 
   # ============================================================
-  # LÓGICA - ELECTION SERVICE
+  # LÓGICA - ELECTION SERVICE (responsable: David)
   # ============================================================
-  election-service:
+  agr-election-lo:
     container_name: agr-election-lo
     build: ./agr-election-lo
     environment:
-      DATABASE_URL: postgresql+psycopg2://${ELECTIONS_DB_USER:-elections}:${ELECTIONS_DB_PASSWORD:-elections}@elections-db:5432/${ELECTIONS_DB_NAME:-elections}
+      DATABASE_URL: postgresql+psycopg2://${ELECTIONS_DB_USER:-elections}:${ELECTIONS_DB_PASSWORD:-elections}@agr-elections-db:5432/${ELECTIONS_DB_NAME:-elections}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       SEED_DATA: ${SEED_DATA:-true}
-    ports:
-      - "8000:8000"
     depends_on:
-      elections-db:
+      agr-elections-db:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
@@ -45,22 +52,21 @@ services:
       timeout: 5s
       retries: 6
       start_period: 20s
+    networks: [agr-back, agr-data]
     restart: unless-stopped
 
 
   # ============================================================
-  # DATOS - VOTANTES
+  # DATOS - VOTANTES (responsable: Camilo)
   # ============================================================
-  voters-db:
+  # Tabla ballots_cast: en qué elecciones ya votó cada votante.
+  agr-voters-db:
     container_name: agr-voters-db
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${VOTERS_DB_USER:-voters}
       POSTGRES_PASSWORD: ${VOTERS_DB_PASSWORD:-voters}
       POSTGRES_DB: ${VOTERS_DB_NAME:-voters}
-    ports:
-      # Puerto del equipo configurable mediante .env
-      - "${VOTERS_DB_PORT:-5432}:5432"
     volumes:
       - voters-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -68,26 +74,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks: [agr-data]
     restart: unless-stopped
 
 
   # ============================================================
-  # LÓGICA - VOTER SERVICE
+  # LÓGICA - VOTER SERVICE (responsable: Camilo)
   # ============================================================
-  voter-service:
+  # Marca y desmarca la participación (saga del voto). Solo lo llama el gateway.
+  agr-voter-lo:
     container_name: agr-voter-lo
     build: ./agr-voter-lo
     environment:
-      DB_URL: jdbc:postgresql://voters-db:5432/${VOTERS_DB_NAME:-voters}
+      DB_URL: jdbc:postgresql://agr-voters-db:5432/${VOTERS_DB_NAME:-voters}
       DB_USER: ${VOTERS_DB_USER:-voters}
       DB_PASSWORD: ${VOTERS_DB_PASSWORD:-voters}
-      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-0123456789abcdef}
       SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    ports:
-      - "8001:8001"
     depends_on:
-      voters-db:
+      agr-voters-db:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8001/health"]
@@ -95,17 +99,22 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
+    networks: [agr-back, agr-data]
     restart: unless-stopped
 
 
   # ============================================================
-  # DATOS - VOTOS
+  # DATOS - VOTOS (responsable: Maicol)
   # ============================================================
-  votes-db:
+  # Votos anónimos. Con usuario y clave propios: solo agr-vote-lo los conoce.
+  agr-votes-db:
     container_name: agr-votes-db
     image: mongo:7
     # --quiet evita registrar cada conexión del healthcheck
     command: ["mongod", "--quiet"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${VOTES_DB_USER:-votes}
+      MONGO_INITDB_ROOT_PASSWORD: ${VOTES_DB_PASSWORD:-votes}
     volumes:
       - votes-db-data:/data/db
     healthcheck:
@@ -113,38 +122,166 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks: [agr-data]
     restart: unless-stopped
 
 
   # ============================================================
-  # LÓGICA - VOTE SERVICE
+  # ASINCRONÍA - BROKER (responsable: Maicol)
   # ============================================================
-  vote-service:
+  # RabbitMQ con la topología de agr-broker-as/definitions.template.json
+  # (exchange agora.votes, colas de resultados y auditoría, dead-letter).
+  agr-broker-as:
+    container_name: agr-broker-as
+    # Nombre de host fijo: RabbitMQ guarda sus datos por nombre de nodo, así que
+    # si cambia (Docker pone uno al azar) los mensajes del volumen se pierden.
+    hostname: agr-broker-as
+    build: ./agr-broker-as
+    environment:
+      BROKER_USER: ${BROKER_USER:-agora}
+      BROKER_PASSWORD: ${BROKER_PASSWORD:-agora}
+    ports:
+      - "15672:15672"   # consola web; AMQP (5672) solo dentro de Docker
+    volumes:
+      - broker-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [agr-data]
+    restart: unless-stopped
+
+
+  # ============================================================
+  # LÓGICA - VOTE SERVICE (responsable: Maicol)
+  # ============================================================
+  # Guarda el voto y publica VoteRegistered (outbox). Solo lo llama el gateway.
+  agr-vote-lo:
     container_name: agr-vote-lo
     build: ./agr-vote-lo
     environment:
-      MONGO_URI: mongodb://votes-db:27017
-      MONGO_DB: ${MONGO_DB:-votes}
-      ELECTION_SERVICE_URL: http://election-service:8000
-      VOTER_SERVICE_URL: http://voter-service:8001
+      MONGO_URI: mongodb://${VOTES_DB_USER:-votes}:${VOTES_DB_PASSWORD:-votes}@agr-votes-db:27017/?authSource=admin
+      MONGO_DB: ${VOTES_MONGO_DB:-votes}
+      AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/
       SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    ports:
-      - "8002:8002"
     depends_on:
-      votes-db:
+      agr-votes-db:
         condition: service_healthy
-      election-service:
+      agr-broker-as:
         condition: service_healthy
-      # No espera al voter-service: responde 502 si no está disponible al votar.
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8002/health"]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 15s
+    networks: [agr-back, agr-data]
     restart: unless-stopped
-    
+
+
+  # ============================================================
+  # DATOS - RESULTADOS (responsable: Miguel)
+  # ============================================================
+  # appendonly yes: los conteos sobreviven a un reinicio del contenedor.
+  # La clave es la credencial propia de esta base (ningún otro servicio la conoce).
+  agr-results-db:
+    container_name: agr-results-db
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${RESULTS_DB_PASSWORD:-results}"]
+    environment:
+      REDISCLI_AUTH: ${RESULTS_DB_PASSWORD:-results}
+    volumes:
+      - results-db-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [agr-data]
+    restart: unless-stopped
+
+
+  # ============================================================
+  # LÓGICA - RESULTS SERVICE (responsable: Miguel)
+  # ============================================================
+  # Consume VoteRegistered, mantiene los conteos en Redis y sirve resultados y SSE.
+  agr-results-lo:
+    container_name: agr-results-lo
+    build: ./agr-results-lo
+    environment:
+      PORT: "8004"
+      REDIS_URL: redis://:${RESULTS_DB_PASSWORD:-results}@agr-results-db:6379
+      AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/%2f
+      RESULTS_QUEUE: results.vote-registered
+    depends_on:
+      agr-results-db:
+        condition: service_healthy
+      agr-broker-as:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks: [agr-back, agr-data]
+    restart: unless-stopped
+
+
+  # ============================================================
+  # DATOS - AUDITORÍA (responsable: Camilo)
+  # ============================================================
+  # Registro inmutable de eventos. Usuario y clave propios: solo agr-audit-lo los conoce.
+  agr-audit-db:
+    container_name: agr-audit-db
+    image: mongo:7
+    command: ["mongod", "--quiet"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${AUDIT_DB_USER:-audit}
+      MONGO_INITDB_ROOT_PASSWORD: ${AUDIT_DB_PASSWORD:-audit}
+    volumes:
+      - audit-db-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [agr-data]
+    restart: unless-stopped
+
+
+  # ============================================================
+  # LÓGICA - AUDIT SERVICE (responsable: Camilo)
+  # ============================================================
+  # Consume audit.vote-registered y guarda cada evento. El gateway lo consulta
+  # en GET /admin/audit.
+  agr-audit-lo:
+    container_name: agr-audit-lo
+    build: ./agr-audit-lo
+    environment:
+      MONGO_URI: mongodb://${AUDIT_DB_USER:-audit}:${AUDIT_DB_PASSWORD:-audit}@agr-audit-db:27017/?authSource=admin
+      MONGO_DB: ${AUDIT_MONGO_DB:-audit}
+      AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/
+    depends_on:
+      agr-audit-db:
+        condition: service_healthy
+      agr-broker-as:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    networks: [agr-back, agr-data]
+    restart: unless-stopped
+
+
+  # ============================================================
+  # DATOS - AUTENTICACIÓN (responsable: Esteban)
+  # ============================================================
   agr-auth-db:
     image: postgres:16-alpine
     container_name: agr-auth-db
@@ -152,8 +289,6 @@ services:
       POSTGRES_DB: agr_auth_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "5437:5432"
     volumes:
       - agr_auth_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -161,14 +296,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks: [agr-data]
 
+
+  # ============================================================
+  # LÓGICA - AUTH SERVICE (responsable: Esteban)
+  # ============================================================
   agr-auth-lo:
     build:
       context: ./agr-auth-lo
       dockerfile: Dockerfile
     container_name: agr-auth-lo
-    ports:
-      - "8081:8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://agr-auth-db:5432/agr_auth_db
       SPRING_DATASOURCE_USERNAME: postgres
@@ -177,13 +315,14 @@ services:
     depends_on:
       agr-auth-db:
         condition: service_healthy
+    networks: [agr-back, agr-data]
 
 
   # ============================================================
-  # ORQUESTACIÓN - API GATEWAY
+  # ORQUESTACIÓN - API GATEWAY (responsable: David)
   # ============================================================
-  # Único punto de entrada de la API (README, sección 4.3). Llama a los servicios
-  # por el nombre de su contenedor (agr-*), que Docker resuelve en la red de Compose.
+  # Único punto de entrada de la API. Está en agr-front (lo alcanzan el web y la
+  # CLI) y en agr-back (alcanza a los servicios); no ve las bases de datos.
   agr-gateway-or:
     container_name: agr-gateway-or
     build: ./agr-gateway-or
@@ -200,39 +339,76 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      election-service:
+      agr-election-lo:
         condition: service_healthy
       agr-auth-lo:
         condition: service_started
+      agr-vote-lo:
+        condition: service_healthy
+      agr-voter-lo:
+        condition: service_healthy
+      agr-results-lo:
+        condition: service_healthy
+      agr-audit-lo:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 5s
+    networks: [agr-front, agr-back]
     restart: unless-stopped
 
+
   # ============================================================
-  # PRESENTACIÓN - FRONTEND
+  # PRESENTACIÓN - WEB, Next.js con SSR (responsable: Cristian)
   # ============================================================
-  frontend:
+  # El servidor de Next.js llama al gateway por agr-front; el navegador llama a
+  # localhost:8080 solo para votar y para el SSE de resultados.
+  agr-web-fr:
     container_name: agr-web-fr
-    build:
-      context: ./agr-web-fr
-      args:
-        VITE_ELECTION_API_URL: ${VITE_ELECTION_API_URL:-http://localhost:8000}
-        VITE_VOTER_API_URL: ${VITE_VOTER_API_URL:-http://localhost:8001}
-        VITE_VOTE_API_URL: ${VITE_VOTE_API_URL:-http://localhost:8002}
+    build: ./agr-web-fr
+    environment:
+      GATEWAY_INTERNAL_URL: ${GATEWAY_INTERNAL_URL:-http://agr-gateway-or:8080}
+      NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-http://localhost:8080}
     ports:
-      - "3000:80"
+      - "3000:3000"
     depends_on:
-      election-service:
+      agr-gateway-or:
         condition: service_healthy
-      voter-service:
-        condition: service_healthy
-      vote-service:
-        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks: [agr-front]
     restart: unless-stopped
+
+
+  # ============================================================
+  # PRESENTACIÓN - CLI DE ADMINISTRACIÓN (responsable: Maicol)
+  # ============================================================
+  # No corre con "up" (perfil tools). Uso:
+  #   docker compose run --rm agr-admin-fr elections list
+  agr-admin-fr:
+    container_name: agr-admin-fr
+    build: ./agr-admin-fr
+    profiles: ["tools"]
+    environment:
+      AGORA_GATEWAY_URL: http://agr-gateway-or:8080
+      AGORA_ADMIN_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+    networks: [agr-front]
+
+
+# ==============================================================
+# REDES
+# ==============================================================
+networks:
+  agr-front:
+  agr-back:
+  agr-data:
 
 
 # ==============================================================
@@ -242,4 +418,7 @@ volumes:
   elections-db-data:
   voters-db-data:
   votes-db-data:
+  results-db-data:
+  broker-data:
+  audit-db-data:
   agr_auth_db_data:

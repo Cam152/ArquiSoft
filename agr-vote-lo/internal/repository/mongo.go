@@ -1,8 +1,9 @@
-// Package repository es el acceso a la Votes DB (MongoDB).
+// Package repository es el único acceso a agr-votes-db (MongoDB).
 package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -14,11 +15,10 @@ import (
 	"vote-service/internal/model"
 )
 
-// MongoStore guarda los votos y la auditoría en MongoDB.
+// MongoStore guarda los votos en la colección votes.
 type MongoStore struct {
 	client *mongo.Client
 	votes  *mongo.Collection
-	audit  *mongo.Collection
 }
 
 const (
@@ -26,9 +26,9 @@ const (
 	connectDelay   = time.Second
 )
 
-// NewMongoStore espera a que MongoDB responda y crea el índice de votos.
+// NewMongoStore espera a que MongoDB responda y crea los índices.
 func NewMongoStore(ctx context.Context, uri, database string) (*MongoStore, error) {
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri).SetAppName("agr-vote-lo"))
 	if err != nil {
 		return nil, err
 	}
@@ -43,54 +43,88 @@ func NewMongoStore(ctx context.Context, uri, database string) (*MongoStore, erro
 			return nil, fmt.Errorf("MongoDB no respondió tras %d intentos: %w", attempt, err)
 		}
 		log.Printf("esperando a MongoDB (intento %d/%d)", attempt, connectRetries)
-		time.Sleep(connectDelay)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(connectDelay):
+		}
 	}
 
-	db := client.Database(database)
-	store := &MongoStore{client: client, votes: db.Collection("votes"), audit: db.Collection("audit")}
-	_, err = store.votes.Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys: bson.D{{Key: "election_id", Value: 1}, {Key: "candidate_id", Value: 1}},
-	})
-	if err != nil {
-		return nil, err
+	store := &MongoStore{client: client, votes: client.Database(database).Collection("votes")}
+	if err := store.ensureIndexes(ctx); err != nil {
+		return nil, fmt.Errorf("no se pudieron crear los índices: %w", err)
 	}
 	return store, nil
 }
 
-func (s *MongoStore) InsertVote(ctx context.Context, vote model.Vote) error {
-	_, err := s.votes.InsertOne(ctx, vote)
-	return err
-}
-
-func (s *MongoStore) InsertAudit(ctx context.Context, event model.AuditEvent) error {
-	_, err := s.audit.InsertOne(ctx, event)
-	return err
-}
-
-// CountByCandidate devuelve candidate_id -> número de votos.
-func (s *MongoStore) CountByCandidate(ctx context.Context, electionID int) (map[int]int, error) {
-	cursor, err := s.votes.Aggregate(ctx, mongo.Pipeline{
-		{{Key: "$match", Value: bson.D{{Key: "election_id", Value: electionID}}}},
-		{{Key: "$group", Value: bson.D{
-			{Key: "_id", Value: "$candidate_id"},
-			{Key: "votes", Value: bson.D{{Key: "$sum", Value: 1}}},
-		}}},
+func (s *MongoStore) ensureIndexes(ctx context.Context) error {
+	_, err := s.votes.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{
+			// Un voto por Idempotency-Key: el reintento del gateway no lo duplica.
+			Keys:    bson.D{{Key: "idempotency_key", Value: 1}},
+			Options: options.Index().SetName("idempotency_key_unique").SetUnique(true),
+		},
+		{
+			// Índice parcial: solo contiene los votos pendientes del outbox, así la
+			// búsqueda periódica no recorre los ya publicados.
+			Keys: bson.D{{Key: "published", Value: 1}},
+			Options: options.Index().SetName("published_pending").
+				SetPartialFilterExpression(bson.D{{Key: "published", Value: false}}),
+		},
 	})
+	return err
+}
+
+// Insert guarda el voto. Devuelve model.ErrDuplicateKey si la llave ya existe.
+func (s *MongoStore) Insert(ctx context.Context, vote model.Vote) error {
+	_, err := s.votes.InsertOne(ctx, vote)
+	if mongo.IsDuplicateKeyError(err) {
+		return model.ErrDuplicateKey
+	}
+	return err
+}
+
+// FindByIdempotencyKey devuelve nil, nil si no existe.
+func (s *MongoStore) FindByIdempotencyKey(ctx context.Context, key string) (*model.Vote, error) {
+	var vote model.Vote
+	err := s.votes.FindOne(ctx, bson.D{{Key: "idempotency_key", Value: key}}).Decode(&vote)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	var rows []struct {
-		CandidateID int `bson:"_id"`
-		Votes       int `bson:"votes"`
-	}
-	if err := cursor.All(ctx, &rows); err != nil {
+	return &vote, nil
+}
+
+// FindUnpublished devuelve hasta limit votos que siguen en published: false.
+func (s *MongoStore) FindUnpublished(ctx context.Context, limit int) ([]model.Vote, error) {
+	cursor, err := s.votes.Find(ctx,
+		bson.D{{Key: "published", Value: false}},
+		options.Find().SetLimit(int64(limit)).SetHint("published_pending"),
+	)
+	if err != nil {
 		return nil, err
 	}
-	counts := make(map[int]int, len(rows))
-	for _, row := range rows {
-		counts[row.CandidateID] = row.Votes
+	var votes []model.Vote
+	if err := cursor.All(ctx, &votes); err != nil {
+		return nil, err
 	}
-	return counts, nil
+	return votes, nil
+}
+
+// MarkPublished marca el voto cuando el broker confirmó su evento.
+func (s *MongoStore) MarkPublished(ctx context.Context, id string) error {
+	_, err := s.votes.UpdateOne(ctx,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "published", Value: true}}}},
+	)
+	return err
+}
+
+// Ping lo usa el health check.
+func (s *MongoStore) Ping(ctx context.Context) error {
+	return s.client.Ping(ctx, nil)
 }
 
 func (s *MongoStore) Close(ctx context.Context) error {

@@ -2,7 +2,10 @@ module vote-service
 
 go 1.23
 
-require go.mongodb.org/mongo-driver v1.17.4
+require (
+	github.com/rabbitmq/amqp091-go v1.10.0
+	go.mongodb.org/mongo-driver v1.17.4
+)
 
 require (
 	github.com/golang/snappy v0.0.4 // indirect

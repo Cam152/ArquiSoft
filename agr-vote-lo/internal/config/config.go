@@ -3,42 +3,57 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Config es la configuración del servicio.
 type Config struct {
-	Port               string
-	MongoURI           string
-	MongoDB            string
-	ElectionServiceURL string
-	VoterServiceURL    string
-	ServiceAPIKey      string
-	CORSOrigins        []string
+	Port          string
+	MongoURI      string
+	MongoDB       string
+	AMQPURL       string
+	Exchange      string
+	ServiceAPIKey string
+	// OutboxInterval es cada cuánto se reintentan los votos sin publicar.
+	OutboxInterval time.Duration
+	// OutboxBatch es cuántos votos sin publicar se toman en cada vuelta.
+	OutboxBatch int
 }
 
-// Load lee las variables de entorno; todas tienen un valor por defecto.
+// Load lee las variables de entorno; todas tienen un valor por defecto que
+// coincide con los nombres de Docker Compose.
 func Load() Config {
-	var origins []string
-	for _, o := range strings.Split(getenv("CORS_ORIGINS", "http://localhost:3000"), ",") {
-		if o = strings.TrimSpace(o); o != "" {
-			origins = append(origins, o)
-		}
-	}
 	return Config{
-		Port:               getenv("PORT", "8002"),
-		MongoURI:           getenv("MONGO_URI", "mongodb://votes-db:27017"),
-		MongoDB:            getenv("MONGO_DB", "votes"),
-		ElectionServiceURL: strings.TrimRight(getenv("ELECTION_SERVICE_URL", "http://election-service:8000"), "/"),
-		VoterServiceURL:    strings.TrimRight(getenv("VOTER_SERVICE_URL", "http://voter-service:8001"), "/"),
-		ServiceAPIKey:      getenv("SERVICE_API_KEY", "dev-service-key"),
-		CORSOrigins:        origins,
+		Port:           getenv("PORT", "8002"),
+		MongoURI:       getenv("MONGO_URI", "mongodb://agr-votes-db:27017"),
+		MongoDB:        getenv("MONGO_DB", "votes"),
+		AMQPURL:        getenv("AMQP_URL", "amqp://agora:agora@agr-broker-as:5672/"),
+		Exchange:       getenv("VOTES_EXCHANGE", "agora.votes"),
+		ServiceAPIKey:  getenv("SERVICE_API_KEY", "dev-service-key"),
+		OutboxInterval: getDuration("OUTBOX_INTERVAL", 5*time.Second),
+		OutboxBatch:    getInt("OUTBOX_BATCH", 100),
 	}
 }
 
 func getenv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func getDuration(key string, fallback time.Duration) time.Duration {
+	if d, err := time.ParseDuration(getenv(key, "")); err == nil && d > 0 {
+		return d
+	}
+	return fallback
+}
+
+func getInt(key string, fallback int) int {
+	if n, err := strconv.Atoi(getenv(key, "")); err == nil && n > 0 {
+		return n
 	}
 	return fallback
 }
