@@ -144,7 +144,73 @@ services:
       retries: 6
       start_period: 15s
     restart: unless-stopped
+    
+  agr-auth-db:
+    image: postgres:16-alpine
+    container_name: agr-auth-db
+    environment:
+      POSTGRES_DB: agr_auth_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5437:5432"
+    volumes:
+      - agr_auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agr_auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
+  agr-auth-lo:
+    build:
+      context: ./agr-auth-lo
+      dockerfile: Dockerfile
+    container_name: agr-auth-lo
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://agr-auth-db:5432/agr_auth_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      JWT_SECRET: super-secret-key-agora-proto-2-change-this-in-production-32bytes
+    depends_on:
+      agr-auth-db:
+        condition: service_healthy
+
+
+  # ============================================================
+  # ORQUESTACIÓN - API GATEWAY
+  # ============================================================
+  # Único punto de entrada de la API (README, sección 4.3). Llama a los servicios
+  # por el nombre de su contenedor (agr-*), que Docker resuelve en la red de Compose.
+  agr-gateway-or:
+    container_name: agr-gateway-or
+    build: ./agr-gateway-or
+    environment:
+      AUTH_SERVICE_URL: http://agr-auth-lo:8081
+      VOTER_SERVICE_URL: http://agr-voter-lo:8001
+      ELECTION_SERVICE_URL: http://agr-election-lo:8000
+      VOTE_SERVICE_URL: http://agr-vote-lo:8002
+      RESULTS_SERVICE_URL: http://agr-results-lo:8004
+      AUDIT_SERVICE_URL: http://agr-audit-lo:8005
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "8080:8080"
+    depends_on:
+      election-service:
+        condition: service_healthy
+      agr-auth-lo:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
 
   # ============================================================
   # PRESENTACIÓN - FRONTEND
@@ -176,3 +242,4 @@ volumes:
   elections-db-data:
   voters-db-data:
   votes-db-data:
+  agr_auth_db_data:
