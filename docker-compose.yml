@@ -317,6 +317,14 @@ services:
     depends_on:
       agr-auth-db:
         condition: service_healthy
+    restart: unless-stopped
+    # Lab 5: el gateway espera a que auth esté sano (Spring Boot tarda en arrancar)
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/auth/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
     networks: [agr-back-net, agr-auth-data-net]
 
 
@@ -344,7 +352,7 @@ services:
       agr-election-lo:
         condition: service_healthy
       agr-auth-lo:
-        condition: service_started
+        condition: service_healthy
       agr-vote-lo:
         condition: service_healthy
       agr-voter-lo:

@@ -13,13 +13,15 @@ lab5-security/
 ├── design/
 │   └── flujos-permitidos.md   escenario, zonas, matriz de flujos permitidos y bloqueados (Fase 1)
 ├── images/
-│   ├── diagrams/              vistas arquitectónicas (.svg y .png): l5_despliegue.*
+│   ├── diagrams/              l5_despliegue.*, l5_escenario.*, l5_matriz_antes_despues.png
 │   └── screenshots/           capturas de las pruebas: <caso>_<descripcion>.png
 ├── evidence/
 │   ├── before/                salidas de texto con el compose del Prototipo 2 (Fase 0)
 │   └── after/                 salidas de texto con el compose segmentado (Fase 4)
 └── scripts/
-    └── verify-segmentation.sh (Fase 0, Miguel) matriz de alcanzabilidad entre contenedores
+    ├── verify-segmentation.sh matriz de alcanzabilidad origen × destino (por nombre y por IP) + salida a internet
+    ├── verify-b1-b2.sh        casos B1/B2 (anonimato del voto) con controles F13/F14
+    └── verify-b5-web-fr.sh    caso B5, zona de borde (también en .ps1)
 ```
 
 ## Convenciones
