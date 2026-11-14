@@ -34,8 +34,6 @@ services:
     depends_on:
       agr-vote-lo:
         condition: service_healthy
-    # Lab 5 (Network Segmentation): el contenedor de pruebas se une a las mismas
-    # redes que agr-vote-lo para alcanzar el servicio, su base y el broker.
-    # "default" le da salida a internet para que "go test" descargue los módulos
-    # (las redes -net son internal: true y no la tienen).
-    networks: [default, agr-back-net, agr-votes-data-net, agr-bus-net]
+    # Con las redes del Prototipo 2 hay que unir el contenedor de pruebas a ellas:
+    # sin esto queda en la red "default" y no alcanza a agr-vote-lo, la base ni el broker.
+    networks: [agr-back, agr-data]

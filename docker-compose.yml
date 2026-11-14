@@ -2,13 +2,11 @@
 # Levantar todo: docker compose up --build -d --wait
 #
 # Convención: el servicio, el contenedor y la carpeta se llaman igual (agr-<nombre>-<nivel>).
-# Redes (vista de despliegue, Lab 5 - Network Segmentation; ver la sección REDES):
-#   agr-edge-net         web + CLI + gateway      (la presentación solo alcanza al gateway)
-#   agr-back-net         gateway + servicios      (el gateway llega a los servicios)
-#   agr-<x>-data-net     un servicio + su base    (ningún servicio ve una base ajena)
-#   agr-bus-net          broker + vote/results/audit (solo quien usa mensajería)
-#   agr-mgmt-net         consola de RabbitMQ
-# Solo se publican 3000 (web), 8080 (gateway) y 127.0.0.1:15672 (consola). Para
+# Redes (vista de despliegue):
+#   agr-front  presentación + gateway        (la presentación solo alcanza al gateway)
+#   agr-back   gateway + servicios de lógica (el gateway llega a los servicios)
+#   agr-data   servicios + bases + broker    (cada servicio llega a su base y al broker)
+# Solo se publican 3000 (web), 8080 (gateway) y 15672 (consola de RabbitMQ). Para
 # depurar un servicio o una base, usen un docker-compose.override.yml local.
 
 services:
@@ -30,7 +28,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [agr-elections-data-net]
+    networks: [agr-data]
     restart: unless-stopped
 
 
@@ -54,7 +52,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 20s
-    networks: [agr-back-net, agr-elections-data-net]
+    networks: [agr-back, agr-data]
     restart: unless-stopped
 
 
@@ -76,7 +74,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [agr-voters-data-net]
+    networks: [agr-data]
     restart: unless-stopped
 
 
@@ -101,7 +99,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
-    networks: [agr-back-net, agr-voters-data-net]
+    networks: [agr-back, agr-data]
     restart: unless-stopped
 
 
@@ -124,7 +122,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks: [agr-votes-data-net]
+    networks: [agr-data]
     restart: unless-stopped
 
 
@@ -143,7 +141,7 @@ services:
       BROKER_USER: ${BROKER_USER:-agora}
       BROKER_PASSWORD: ${BROKER_PASSWORD:-agora}
     ports:
-      - "127.0.0.1:15672:15672"   # Lab 5: consola solo desde esta máquina; AMQP (5672) solo dentro de Docker
+      - "15672:15672"   # consola web; AMQP (5672) solo dentro de Docker
     volumes:
       - broker-data:/var/lib/rabbitmq
     healthcheck:
@@ -152,7 +150,7 @@ services:
       timeout: 10s
       retries: 10
       start_period: 30s
-    networks: [agr-bus-net, agr-mgmt-net]
+    networks: [agr-data]
     restart: unless-stopped
 
 
@@ -179,7 +177,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 15s
-    networks: [agr-back-net, agr-votes-data-net, agr-bus-net]
+    networks: [agr-back, agr-data]
     restart: unless-stopped
 
 
@@ -201,7 +199,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [agr-results-data-net]
+    networks: [agr-data]
     restart: unless-stopped
 
 
@@ -228,7 +226,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
-    networks: [agr-back-net, agr-results-data-net, agr-bus-net]
+    networks: [agr-back, agr-data]
     restart: unless-stopped
 
 
@@ -250,7 +248,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks: [agr-audit-data-net]
+    networks: [agr-data]
     restart: unless-stopped
 
 
@@ -277,7 +275,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 15s
-    networks: [agr-back-net, agr-audit-data-net, agr-bus-net]
+    networks: [agr-back, agr-data]
     restart: unless-stopped
 
 
@@ -298,7 +296,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    networks: [agr-auth-data-net]
+    networks: [agr-data]
 
 
   # ============================================================
@@ -317,22 +315,14 @@ services:
     depends_on:
       agr-auth-db:
         condition: service_healthy
-    restart: unless-stopped
-    # Lab 5: el gateway espera a que auth esté sano (Spring Boot tarda en arrancar)
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8081/auth/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 40s
-    networks: [agr-back-net, agr-auth-data-net]
+    networks: [agr-back, agr-data]
 
 
   # ============================================================
   # ORQUESTACIÓN - API GATEWAY (responsable: David)
   # ============================================================
-  # Único punto de entrada de la API. Está en agr-edge-net (lo alcanzan el web y la
-  # CLI) y en agr-back-net (alcanza a los servicios); no ve las bases ni el broker.
+  # Único punto de entrada de la API. Está en agr-front (lo alcanzan el web y la
+  # CLI) y en agr-back (alcanza a los servicios); no ve las bases de datos.
   agr-gateway-or:
     container_name: agr-gateway-or
     build: ./agr-gateway-or
@@ -352,7 +342,7 @@ services:
       agr-election-lo:
         condition: service_healthy
       agr-auth-lo:
-        condition: service_healthy
+        condition: service_started
       agr-vote-lo:
         condition: service_healthy
       agr-voter-lo:
@@ -367,14 +357,14 @@ services:
       timeout: 5s
       retries: 6
       start_period: 5s
-    networks: [agr-edge-net, agr-back-net]
+    networks: [agr-front, agr-back]
     restart: unless-stopped
 
 
   # ============================================================
   # PRESENTACIÓN - WEB, Next.js con SSR (responsable: Cristian)
   # ============================================================
-  # El servidor de Next.js llama al gateway por agr-edge-net; el navegador llama a
+  # El servidor de Next.js llama al gateway por agr-front; el navegador llama a
   # localhost:8080 solo para votar y para el SSE de resultados.
   agr-web-fr:
     container_name: agr-web-fr
@@ -393,7 +383,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
-    networks: [agr-edge-net]
+    networks: [agr-front]
     restart: unless-stopped
 
 
@@ -409,65 +399,16 @@ services:
     environment:
       AGORA_GATEWAY_URL: http://agr-gateway-or:8080
       AGORA_ADMIN_KEY: ${ADMIN_API_KEY:-dev-admin-key}
-    networks: [agr-edge-net]
+    networks: [agr-front]
 
 
 # ==============================================================
 # REDES
 # ==============================================================
-# Lab 5 - Network Segmentation (diseño: lab5-security/design/flujos-permitidos.md)
-#
-# Regla: cada componente solo comparte red con lo que realmente necesita llamar.
-#   internal: true  -> la red no tiene salida a internet ni se pueden publicar
-#                      puertos desde ella; solo se hablan sus miembros.
-#
-# Reemplaza las redes del Prototipo 2 (agr-front, agr-back y agr-data, que era
-# una red plana donde todos los servicios veían todas las bases).
 networks:
-
-  # --- Zona de borde: lo único alcanzable desde fuera de Docker ---------------
-  # agr-web-fr (3000), agr-gateway-or (8080), agr-admin-fr (CLI)
-  agr-edge-net:
-    name: agr-edge-net
-
-  # --- Zona de lógica: el gateway y los servicios -----------------------------
-  # agr-gateway-or + agr-auth-lo, agr-voter-lo, agr-election-lo, agr-vote-lo,
-  # agr-results-lo, agr-audit-lo. Los servicios no se llaman entre sí.
-  agr-back-net:
-    name: agr-back-net
-    internal: true
-
-  # --- Zona de datos: una red privada por servicio (servicio + su base) -------
-  agr-auth-data-net:        # agr-auth-lo      + agr-auth-db       (Esteban)
-    name: agr-auth-data-net
-    internal: true
-  agr-elections-data-net:   # agr-election-lo  + agr-elections-db  (David)
-    name: agr-elections-data-net
-    internal: true
-  agr-voters-data-net:      # agr-voter-lo     + agr-voters-db     (Camilo)
-    name: agr-voters-data-net
-    internal: true
-  agr-votes-data-net:       # agr-vote-lo      + agr-votes-db      (Sebastián)
-    name: agr-votes-data-net
-    internal: true
-  agr-results-data-net:     # agr-results-lo   + agr-results-db    (Miguel)
-    name: agr-results-data-net
-    internal: true
-  agr-audit-data-net:       # agr-audit-lo     + agr-audit-db      (Camilo)
-    name: agr-audit-data-net
-    internal: true
-
-  # --- Zona de mensajería: el broker y solo sus clientes reales ---------------
-  # agr-broker-as + agr-vote-lo (publica), agr-results-lo y agr-audit-lo (consumen)
-  agr-bus-net:
-    name: agr-bus-net
-    internal: true
-
-  # --- Zona de administración: consola de RabbitMQ ----------------------------
-  # Solo agr-broker-as. No es internal porque publica 15672, pero en la Fase 2
-  # se publica únicamente en 127.0.0.1 (no queda expuesta a la red local).
-  agr-mgmt-net:
-    name: agr-mgmt-net
+  agr-front:
+  agr-back:
+  agr-data:
 
 
 # ==============================================================
