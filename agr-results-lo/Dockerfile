@@ -8,9 +8,13 @@ RUN mkdir src \
     && echo "fn main() {}" > src/main.rs \
     && touch src/lib.rs \
     && cargo build --release --locked \
-    && rm -rf src target/release/results-service* target/release/deps/results_service* target/release/.fingerprint/results-service*
+    && cargo clean --release --locked -p results-service \
+    && rm -rf src
+# "cargo clean -p" no depende del layout interno de target/ (cambió en Rust 1.100 y
+# el rm por rutas dejaba el binario vacío del paso anterior). El touch evita que cargo
+# tome el código copiado como viejo (COPY conserva el mtime original).
 COPY src ./src
-RUN cargo build --release --locked
+RUN touch src/main.rs src/lib.rs && cargo build --release --locked
 
 # Etapa 2: imagen final, sin compiladores.
 FROM alpine:3.20
