@@ -1,0 +1,20 @@
+# Lab 6 - Performance: despliegue mínimo de la funcionalidad "listar elecciones"
+#
+#   agr-web-fr  ->  agr-gateway-or  ->  agr-election-lo  ->  agr-elections-db
+#
+# Uso (desde la raíz del repo):
+#   docker compose -f docker-compose.yml -f lab6-performance/docker-compose.lab6.yml \
+#     up -d --build --wait agr-elections-db agr-election-lo agr-gateway-or agr-web-fr
+#
+# El gateway depende en el compose base de los seis servicios; aquí se reduce a
+# agr-election-lo para que "up" no levante el resto. Su /health es estático, así
+# que arranca sin auth, voter, vote, results ni audit.
+#
+# Puertos publicados: 3000 (web) y 8080 (gateway). k6, desde otra máquina, apunta a:
+#   http://<IP de este equipo>:8080/elections
+
+services:
+  agr-gateway-or:
+    depends_on: !override
+      agr-election-lo:
+        condition: service_healthy
