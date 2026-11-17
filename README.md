@@ -2,7 +2,7 @@
   <img src="artifacts/AGORA_logo.png" alt="AGORA, sistema de votación electrónica" width="320">
 </p>
 
-# AGORA: sistema de votación electrónica (Prototipo 2)
+# AGORA: sistema de votación electrónica (Prototipo 2; Prototipo 3 en planeación)
 
 **AGORA** es un sistema de votación electrónica para elecciones estudiantiles. Un votante inicia sesión con su
 documento y su clave, ve las elecciones abiertas, vota **una vez en cada elección** y sigue los resultados, que se
@@ -19,6 +19,97 @@ Proyecto del equipo 1b para el curso Arquitectura de Software (UNAL, 2026-II, pr
 - Entrega del artefacto: lunes 2 de noviembre de 2026, archivo `p2_1b.pdf` en MiCampus. Su versión en Markdown está
   en [`artifacts/p2_1b.md`](artifacts/p2_1b.md).
 - Presentación en clase: martes 3 de noviembre de 2026.
+- Prototipo 3 (en planeación): entrega el lunes 23 de noviembre de 2026 (`p3_1b.pdf`) y presentación el martes 24. Ver la
+  [sección Prototipo 3](#prototipo-3-en-planeación).
+
+## Prototipo 3 (en planeación)
+
+> **Estado:** todo lo de esta sección es una **propuesta del plan de trabajo**, no está implementado. Lo descrito en las
+> secciones numeradas (1 a 10) sigue siendo el Prototipo 2.
+
+**Objetivo.** Rediseñar la arquitectura con foco en dos atributos de calidad: **seguridad** y **rendimiento**,
+manteniendo las funciones del Prototipo 2. **Entrega:** lunes 23 de noviembre de 2026, archivo `p3_1b.pdf` (exportado
+de `p3_1b.md`) en MiCampus. **Presentación:** martes 24 de noviembre.
+
+### Qué se propone agregar
+
+| Escenario | Problema de AGORA hoy | Propuesta | Patrón |
+|---|---|---|---|
+| S1 · Secure Channel | Todo viaja en HTTP plano: documento, clave y JWT se pueden capturar en la red | TLS 1.2/1.3 en el borde con certificado de `localhost` (mkcert u openssl), redirección de 80 a 443 y HSTS. La llave privada no se sube al repositorio: la genera un script | Secure Channel |
+| S2 · Reverse Proxy | La web (3000) y el gateway (8080) se publican directo y revelan su tecnología | Componente nuevo `agr-proxy-rp` (Nginx) como único punto de entrada: rutas `/` y `/api/`, SSE sin buffer, límite de 1 MB por petición, encabezados de seguridad y sin `X-Powered-By` | Reverse Proxy |
+| S3 · Network Segmentation | En el P2 la red de datos es plana: un servicio comprometido alcanza todas las bases | Integrar el trabajo del Lab 5 (`lab5-security`, aún fuera de `main`) y extenderlo: red nueva `agr-public-net` solo para el proxy y `agr-edge-net` pasa a `internal`. Se actualiza la matriz de flujos y se repiten las pruebas del Lab 5 | Network Segmentation |
+| S4 · Fuerza bruta contra el login *(recomendado, por confirmar)* | No hay límite de intentos en `/auth/login` | Límite por IP en el proxy (`limit_req`) y bloqueo de cuenta en `agr-auth-lo` tras 5 intentos fallidos (columnas `failed_attempts` y `locked_until`, respuesta 423). El gateway deja pasar 423 y 429 y el web muestra mensajes claros | Rate Limiting |
+| S5 · Alteración de la auditoría *(recomendado, por confirmar)* | Quien acceda a `agr-audit-db` puede borrar o modificar eventos sin que se note | Cadena de hashes en `agr-audit-lo` (`seq`, `prev_hash`, `hash` SHA-256), endpoint `GET /audit/verify`, ruta `GET /admin/audit/verify` en el gateway y comando `agora audit verify` en la CLI | Tamper-evident log |
+
+### Cambios de arquitectura propuestos
+
+| Aspecto | Prototipo 2 | Prototipo 3 propuesto |
+|---|---|---|
+| Entrada al sistema | `localhost:3000` (web) y `localhost:8080` (gateway), en HTTP | Solo `https://localhost` (443) a través de `agr-proxy-rp`; el puerto 80 solo redirige |
+| Puertos publicados | 3000, 8080 y `127.0.0.1:15672` | 443, 80 y `127.0.0.1:15672`; la web y el gateway dejan de publicar puertos |
+| Llamadas del navegador al gateway | `http://localhost:8080/...` (otro origen, requiere CORS) | `https://localhost/api/...` (mismo origen). Se logra cambiando `NEXT_PUBLIC_GATEWAY_URL` a `https://localhost/api` |
+| Componentes nuevos | — | `agr-proxy-rp` (Nginx) |
+| Redes | `agr-front`, `agr-back`, `agr-data` | Las redes del Lab 5 más `agr-public-net`, con `agr-edge-net` como `internal` |
+| Login | Sin límite de intentos | Bloqueo de cuenta tras intentos fallidos (S4) |
+| Auditoría | Eventos sueltos | Cadena de hashes verificable (S5) |
+
+El proxy quita el prefijo `/api` antes de reenviar al gateway, así que el gateway no cambia sus rutas.
+
+### Análisis de rendimiento y escalabilidad (propuesto)
+
+Pruebas de carga con **k6** (contenedor `grafana/k6`); los guiones y resultados quedarían en `perf/`.
+
+| Prueba | Qué mide |
+|---|---|
+| P1 · Lectura | Lista de elecciones (GraphQL) y resultados, con rampa de 10 a 300 usuarios virtuales |
+| P2 · Escritura | Login y voto (la saga completa), con rampa hasta encontrar el punto de quiebre |
+| P3 · Costo de la seguridad | P1 y P2 sin proxy ni TLS (línea base) y con proxy, TLS y límites |
+| P4 · Escalabilidad | P1 con 1 y con 3 réplicas del gateway detrás del proxy (`--scale agr-gateway-or=3`) |
+
+Métricas: latencia p50/p95/p99, peticiones por segundo, tasa de error y CPU y memoria por contenedor. Requiere
+sembrar más votantes en `agr-auth-lo` (variable propuesta `SEED_VOTERS`), medir la línea base **antes** de integrar el
+proxy y poder subir o desactivar el límite de S4 durante las pruebas.
+
+### Responsabilidades del equipo en el Prototipo 3
+
+Cada integrante conserva los componentes del Prototipo 2 (sección 1) y toma estas tareas:
+
+| Integrante | Responsabilidad principal | Además |
+|---|---|---|
+| David | S2 Reverse Proxy: `agr-proxy-rp`, `docker-compose.yml`, rutas `/api`, SSE a través del proxy y quitar los puertos publicados | Pasar `lab5-security` a `main` y crear la rama `p3`; cambios del gateway (pasar 423 y 429, ruta de verify). Es el único dueño del compose |
+| Esteban | S1 Secure Channel: certificados, HTTPS y HSTS | S4 en `agr-auth-lo` (bloqueo de cuenta); `SEED_VOTERS` |
+| Cristian | S3: segmentación actualizada con el proxy y matriz de flujos | Web apuntando a `/api` y mensajes 423/429; vista de despliegue |
+| Camilo | S5: cadena de hashes en `agr-audit-lo` y `/audit/verify` | Evidencia de la alteración detectada |
+| Maicol | Comando `agora audit verify` en la CLI | Pruebas k6 de escritura (P2) y del broker |
+| Miguel | Pruebas k6 de lectura (P1), costo de la seguridad (P3) y escalabilidad (P4) | Sección de rendimiento y escalabilidad del documento |
+| Todos | Su escenario en formato de seis partes, con tácticas, patrón y evidencias | Su parte de las vistas C&C, de capas y de descomposición |
+
+**Documento `p3_1b.md`.**
+
+| Sección | Responsable sugerido |
+|---|---|
+| Equipo, sistema y requisitos funcionales | Líder |
+| Estructura C&C (con proxy y conectores HTTPS) | David |
+| Estructura de despliegue | Cristian |
+| Estructura por capas | Maicol |
+| Estructura de descomposición | Cada uno su componente; consolida Camilo |
+| Seguridad: S1 a S5 | Responsable de cada escenario |
+| Rendimiento y escalabilidad | Miguel, con datos de Maicol |
+| Revisión final y exportación a PDF | Líder |
+
+**Forma de trabajo.** Rama de integración `p3` (creada desde `main` cuando el Lab 5 esté fusionado) y una rama
+`p3/<nombre>` por persona, con un Pull Request hacia `p3` que incluya el código, las evidencias y su sección del
+documento. El día de la entrega, `p3` pasa a `main`.
+
+### Decisiones pendientes
+
+1. ¿S4 y S5 son Rate Limiting y Tamper-evident log, o se elige alguna alternativa (gestión de secretos o autenticación
+   entre servicios)?
+2. ¿Se confirma el nombre `agr-proxy-rp`?
+3. ¿Se hace TLS interno opcional, o solo en el borde?
+4. ¿Se cierra el riesgo B8 del Lab 5 dentro de S3 o se deja como riesgo residual?
+
+---
 
 ## Contenido
 
