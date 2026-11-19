@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# verify-segmentation.sh — Matriz de alcanzabilidad origen x destino (Lab 5, equipo 1b)
+# verify-segmentation.sh — Matriz de alcanzabilidad origen x destino (Prototipo 3, S3, equipo 1b)
+#
+# Incluye al reverse proxy agr-proxy-rp (S2) cuando está corriendo; si no, lo
+# omite y la matriz cubre los 15 contenedores restantes.
 #
 # Para cada contenedor agr-* en ejecución (origen) intenta abrir una conexión TCP
 # hacia el puerto de servicio de cada otro contenedor (destino), desde el propio
@@ -9,16 +12,21 @@
 #      "no resuelve" con "no hay ruta").
 # También prueba la salida a internet de cada origen.
 #
-# Cada camino abierto se clasifica contra design/flujos-permitidos.md:
-#   F   flujo permitido (F3-F19)
+# Cada camino abierto se clasifica contra p3/s3/flujos-permitidos.md:
+#   F   flujo permitido (F3-F19; F21 proxy -> web y F22 proxy -> gateway)
 #   R   sentido inverso de un flujo permitido (mismo segmento; un bridge no es direccional)
-#   B8  servicio <-> servicio dentro de agr-back-net (riesgo aceptado, §3.6)
+#   B8  servicio <-> servicio dentro de agr-back-net (riesgo aceptado, flujos-permitidos.md §4)
+#   P   solo por IP hacia un puerto que ya está publicado en el host (0.0.0.0): es la misma
+#       puerta que usa cualquier cliente de fuera, no un camino hacia una zona protegida.
+#       Pasa en Docker Desktop desde contenedores que están en una red no internal.
 #   X   camino NO autorizado  <- la medida del escenario es cuántos hay
 #
-# Uso:  ./verify-segmentation.sh [archivo-salida]
-#   Antes:   en la rama main            -> evidence/before/matriz.txt
-#   Después: en la rama lab5-security   -> evidence/after/matriz.txt
+# Uso (Git Bash, desde la raíz del repo):  bash p3/s3/verify-segmentation.sh [archivo-salida]
+#   Antes:              en la rama main (Prototipo 2)    -> p3/s3/matriz_antes.txt
+#   Con segmentación:   en la rama p3                    -> p3/s3/matriz_segmentacion.txt
+#   Con proxy (S2):     en la rama p3, con agr-proxy-rp  -> p3/s3/matriz_proxy.txt
 set -uo pipefail
+export MSYS_NO_PATHCONV=1   # Git Bash en Windows: no reescribir rutas como /dev/null
 
 OUT="${1:-}"
 IMG="busybox:1.36"
@@ -26,20 +34,21 @@ docker image inspect "$IMG" >/dev/null 2>&1 || docker pull -q "$IMG" >/dev/null
 
 # destino -> puerto de servicio
 declare -A PORT=(
-  [agr-web-fr]=3000 [agr-gateway-or]=8080
+  [agr-proxy-rp]=80 [agr-web-fr]=3000 [agr-gateway-or]=8080
   [agr-auth-lo]=8081 [agr-voter-lo]=8001 [agr-election-lo]=8000
   [agr-vote-lo]=8002 [agr-results-lo]=8004 [agr-audit-lo]=8005
   [agr-auth-db]=5432 [agr-voters-db]=5432 [agr-elections-db]=5432
   [agr-votes-db]=27017 [agr-results-db]=6379 [agr-audit-db]=27017
   [agr-broker-as]=5672
 )
-ORDER=(agr-web-fr agr-gateway-or agr-auth-lo agr-voter-lo agr-election-lo agr-vote-lo
+ORDER=(agr-proxy-rp agr-web-fr agr-gateway-or agr-auth-lo agr-voter-lo agr-election-lo agr-vote-lo
        agr-results-lo agr-audit-lo agr-auth-db agr-voters-db agr-elections-db
        agr-votes-db agr-results-db agr-audit-db agr-broker-as)
-SHORT=(web gw auth voter elec vote res audit authDB votrsDB elecDB votesDB resDB audDB broker)
+SHORT=(proxy web gw auth voter elec vote res audit authDB votrsDB elecDB votesDB resDB audDB broker)
 
-# Flujos permitidos (origen>destino) de design/flujos-permitidos.md §3
+# Flujos permitidos (origen>destino) de p3/s3/flujos-permitidos.md §3
 declare -A FLOW=(
+  [agr-proxy-rp\>agr-web-fr]=F21 [agr-proxy-rp\>agr-gateway-or]=F22
   [agr-web-fr\>agr-gateway-or]=F3
   [agr-gateway-or\>agr-auth-lo]=F5 [agr-gateway-or\>agr-voter-lo]=F6
   [agr-gateway-or\>agr-election-lo]=F7 [agr-gateway-or\>agr-vote-lo]=F8
@@ -70,6 +79,12 @@ for d in "${present[@]}"; do
   targets+="$d ${PORT[$d]} ${ips%,}"$'\n'
 done
 
+# destinos cuyo puerto de servicio está publicado fuera de 127.0.0.1
+declare -A PUB=()
+for d in "${present[@]}"; do
+  docker port "$d" "${PORT[$d]}" 2>/dev/null | grep -qv '^127\.0\.0\.1' && PUB[$d]=1
+done
+
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 REP="$TMP/report.txt"
 
@@ -98,7 +113,7 @@ probe() { # $1 origen -> $TMP/<origen>
 for s in "${present[@]}"; do probe "$s" & done; wait
 
 {
-  echo "Matriz de alcanzabilidad · AGORA"
+  echo "Matriz de alcanzabilidad · AGORA (Prototipo 3)"
   echo "$(date '+%Y-%m-%d %H:%M:%S %z') · rama $(git rev-parse --abbrev-ref HEAD 2>/dev/null) ($(git rev-parse --short HEAD 2>/dev/null)) · Docker $(docker version --format '{{.Server.Version}}')"
   echo
   echo "Redes de cada contenedor:"
@@ -107,6 +122,7 @@ for s in "${present[@]}"; do probe "$s" & done; wait
   done
   echo
   echo "Leyenda de celda: F#=flujo permitido abierto · R=inverso de flujo permitido · B8=servicio<->servicio (riesgo aceptado)"
+  echo "                  P=solo por IP a un puerto ya publicado en el host (la misma entrada que usa un cliente externo)"
   echo "                  X=camino NO autorizado abierto (por nombre) · X*=abierto solo por IP · .=bloqueado · -=mismo contenedor"
   echo
   printf '%-18s' "origen \\ destino"
@@ -114,7 +130,8 @@ for s in "${present[@]}"; do probe "$s" & done; wait
   printf '%-8s\n' "internet"
 } >"$REP"
 
-declare -i nF=0 nR=0 nB8=0 nX=0 nNet=0 nBlocked=0
+declare -i nF=0 nR=0 nB8=0 nP=0 nX=0 nNet=0 nBlocked=0
+plist=""
 xlist=""
 for s in "${present[@]}"; do
   line=$(printf '%-18s' "$s")
@@ -124,6 +141,9 @@ for s in "${present[@]}"; do
       SELF) cell="-";;
       NAME|IP)
         c=$(classify "$s" "$d"); cell="$c"
+        if [[ $c == X && $r == IP && -n "${PUB[$d]:-}" ]]; then
+          c=P; cell=P; nP+=1; plist+="  $s -> $d:${PORT[$d]} (puerto publicado: $(docker port "$d" "${PORT[$d]}" | head -1))"$'\n'
+        fi
         case "$c" in F*) nF+=1;; R) nR+=1;; B8) nB8+=1;; X) nX+=1; xlist+="  $s -> $d:${PORT[$d]} ($r)"$'\n'; [[ $r == IP ]] && cell="X*";; esac;;
       *) cell="."; nBlocked+=1;;
     esac
@@ -140,9 +160,11 @@ done
   echo "  Flujos permitidos abiertos (F):            $nF"
   echo "  Inversos de flujos permitidos (R):         $nR"
   echo "  Servicio<->servicio en back-net (B8):      $nB8"
+  echo "  Solo por IP a un puerto publicado (P):     $nP"
   echo "  Caminos NO autorizados abiertos (X):       $nX"
   echo "  Pares bloqueados:                          $nBlocked"
   echo "  Contenedores con salida a internet:        $nNet de ${#present[@]}"
+  if [[ -n "$plist" ]]; then echo; echo "Accesos a puertos publicados (P):"; printf '%s' "$plist"; fi
   if [[ -n "$xlist" ]]; then echo; echo "Caminos no autorizados:"; printf '%s' "$xlist"; fi
 } >>"$REP"
 
