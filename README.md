@@ -35,7 +35,7 @@ Rama de trabajo: `p3`.
 |---|---|---|---|
 | S1 · Secure Channel | Todo viaja en HTTP plano: el documento, la clave y el JWT se pueden capturar en la red | TLS 1.2/1.3 en el proxy con un certificado de `localhost` generado por script (la llave privada no se sube al repositorio), redirección de 80 a 443 y HSTS | Secure Channel |
 | S2 · Reverse Proxy | La web (3000) y el gateway (8080) se publican directo y revelan su tecnología | Componente nuevo `agr-proxy-rp` (Nginx) como único punto de entrada: `/` va a la web y `/api/` al gateway (sin el prefijo), SSE sin buffer, límite de 1 MB por petición, encabezados de seguridad y sin `Server` ni `X-Powered-By` | Reverse Proxy |
-| S3 · Network Segmentation | La red de datos es plana: un servicio comprometido alcanza todas las bases | La segmentación del Lab 5 (rama `lab5-security`): diez redes, ocho de ellas `internal`, una red de datos por servicio y la consola de RabbitMQ solo en `127.0.0.1`. Con el proxy se agrega `agr-public-net` y `agr-edge-net` pasa a `internal` | Network Segmentation |
+| S3 · Network Segmentation | La red de datos es plana: un servicio comprometido alcanza todas las bases | Diez redes en `docker-compose.yml`, ocho de ellas `internal`: una red de datos por servicio, el broker solo con sus clientes y la consola de RabbitMQ solo en `127.0.0.1`. Con el proxy se agrega `agr-public-net` y `agr-edge-net` pasa a `internal`. Diseño en [`p3/s3/flujos-permitidos.md`](p3/s3/flujos-permitidos.md) | Network Segmentation |
 | S4 · Fuerza bruta contra el login | `/auth/login` acepta intentos sin límite | Límite por IP en el proxy (`limit_req`, respuesta 429) y bloqueo de la cuenta en `agr-auth-lo` tras 5 intentos fallidos (columnas `failed_attempts` y `locked_until`, respuesta 423). El gateway deja pasar 423 y 429 y la web muestra un mensaje claro | Rate Limiting |
 | S5 · Alteración de la auditoría | Quien entre a `agr-audit-db` puede borrar o cambiar eventos sin que se note | Cadena de hashes en `agr-audit-lo` (`seq`, `prev_hash` y `hash` SHA-256), endpoint `GET /audit/verify` y ruta `GET /admin/audit/verify` en el gateway | Tamper-evident log |
 
@@ -50,7 +50,7 @@ con sus tácticas, su patrón y evidencias **antes** (en el Prototipo 2) y **des
 | Puertos publicados | 3000, 8080 y 15672 | 443, 80 y `127.0.0.1:15672` |
 | Llamadas del navegador al gateway | `http://localhost:8080/...` (otro origen, con CORS) | `https://localhost/api/...` (mismo origen), con `NEXT_PUBLIC_GATEWAY_URL=https://localhost/api` |
 | Componentes | 16 | 17: se agrega `agr-proxy-rp` (Nginx) |
-| Redes | `agr-front`, `agr-back` y `agr-data` | Las diez del Lab 5 más `agr-public-net` |
+| Redes | `agr-front`, `agr-back` y `agr-data` | Diez redes segmentadas más `agr-public-net` |
 | Login | Sin límite de intentos | Límite por IP y bloqueo de cuenta (S4) |
 | Auditoría | Eventos sueltos | Cadena de hashes verificable (S5) |
 
@@ -86,7 +86,7 @@ documento:
 
 | Integrante | Tarea | Qué entrega | Sección del documento |
 |---|---|---|---|
-| David | S3 · Network Segmentation | Crear la rama `p3` desde `main` con el `docker-compose.yml` y el `docker-compose.test.yml` de `lab5-security`. Correr `lab5-security/scripts/verify-segmentation.sh` y guardar la matriz en `p3/s3/`. Cuando entre S2, repetir la matriz con el proxy | Escenario S3 |
+| David | S3 · Network Segmentation | Crear la rama `p3` con la segmentación aplicada en `docker-compose.yml` y `docker-compose.test.yml`, la matriz de flujos (`p3/s3/flujos-permitidos.md`) y el script `p3/s3/verify-segmentation.sh`. Guardar la matriz de alcanzabilidad antes y después en `p3/s3/`. Cuando entre S2, repetirla con el proxy | Escenario S3 |
 | Cristian | S2 · Reverse Proxy | Carpeta `agr-proxy-rp/` (Dockerfile y `nginx.conf`) y su servicio en el compose, en `agr-public-net` y `agr-edge-net`. Rutas `/` y `/api/`, SSE sin buffer, 1 MB por petición, encabezados de seguridad. Quitar los puertos 3000 y 8080, ajustar `NEXT_PUBLIC_GATEWAY_URL` y `CORS_ORIGINS`. En la web, mensajes para 423 y 429. Evidencias en `p3/s2/` | Escenario S2 y estructura de despliegue |
 | Miguel | S1 · Secure Channel | Script `p3/s1/gen-certs.sh` (openssl, certificado de `localhost`; la llave va al `.gitignore`), bloque TLS en `nginx.conf` (TLS 1.2/1.3, redirección 80 → 443, HSTS). Evidencias en `p3/s1/`: captura de tráfico antes (clave legible) y después (cifrado) y `curl -v` mostrando el certificado | Escenario S1 y estructura C&C |
 | Esteban | S4 · Fuerza bruta contra el login | Bloqueo de cuenta en `agr-auth-lo` (5 intentos, respuesta 423), `limit_req` para `/api/auth/login` en el proxy (respuesta 429) y paso de 423 y 429 en `agr-gateway-or/src/clients/auth.ts`. Evidencias en `p3/s4/`: un script que lanza intentos fallidos y muestra 429 y 423 | Escenario S4, Equipo y Sistema (con la completitud funcional), consolidación y exportación a PDF |

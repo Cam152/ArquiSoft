@@ -1,5 +1,5 @@
-Matriz de alcanzabilidad · AGORA
-2026-11-09 19:53:55 -0500 · rama lab5-security (4ddad1b) · Docker 29.9.2
+Matriz de alcanzabilidad · AGORA (Prototipo 3)
+2026-11-19 16:18:51 -0500 · rama p3 (d8b80ec) · Docker 29.2.1
 
 Redes de cada contenedor:
   agr-web-fr        agr-edge-net 
@@ -19,6 +19,7 @@ Redes de cada contenedor:
   agr-broker-as     agr-bus-net agr-mgmt-net 
 
 Leyenda de celda: F#=flujo permitido abierto · R=inverso de flujo permitido · B8=servicio<->servicio (riesgo aceptado)
+                  P=solo por IP a un puerto ya publicado en el host (la misma entrada que usa un cliente externo)
                   X=camino NO autorizado abierto (por nombre) · X*=abierto solo por IP · .=bloqueado · -=mismo contenedor
 
 origen \ destino  web     gw      auth    voter   elec    vote    res     audit   authDB  votrsDB elecDB  votesDB resDB   audDB   broker  internet
@@ -36,12 +37,17 @@ agr-elections-db  .       .       .       .       R       .       .       .     
 agr-votes-db      .       .       .       .       .       R       .       .       .       .       .       -       .       .       .       no
 agr-results-db    .       .       .       .       .       .       R       .       .       .       .       .       -       .       .       no
 agr-audit-db      .       .       .       .       .       .       .       R       .       .       .       .       .       -       .       no
-agr-broker-as     .       .       .       .       .       R       R       R       .       .       .       .       .       .       -       SÍ
+agr-broker-as     P       P       .       .       .       R       R       R       .       .       .       .       .       .       -       SÍ
 
 Resumen
   Flujos permitidos abiertos (F):            16
   Inversos de flujos permitidos (R):         16
   Servicio<->servicio en back-net (B8):      30
+  Solo por IP a un puerto publicado (P):     2
   Caminos NO autorizados abiertos (X):       0
-  Pares bloqueados:                          148
+  Pares bloqueados:                          146
   Contenedores con salida a internet:        3 de 15
+
+Accesos a puertos publicados (P):
+  agr-broker-as -> agr-web-fr:3000 (puerto publicado: 0.0.0.0:3000)
+  agr-broker-as -> agr-gateway-or:8080 (puerto publicado: 0.0.0.0:8080)
