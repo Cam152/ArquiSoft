@@ -27,21 +27,37 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<AuthResponse> login(
+            @RequestBody LoginRequest request) {
+
         return ResponseEntity.ok(authService.login(request));
     }
 
     @GetMapping("/validate")
-    public ResponseEntity<ValidateResponse> validate(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
-        ValidateResponse response = authService.validateToken(authHeader);
+    public ResponseEntity<ValidateResponse> validate(
+            @RequestHeader(
+                    value = HttpHeaders.AUTHORIZATION,
+                    required = false
+            ) String authHeader) {
+
+        ValidateResponse response =
+                authService.validateToken(authHeader);
+
         if (!response.valid()) {
             return ResponseEntity.status(401).body(response);
         }
+
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/health")
     public ResponseEntity<Map<String, String>> health() {
-        return ResponseEntity.ok(Map.of("status", "UP", "service", "agr-auth-lo"));
+
+        return ResponseEntity.ok(
+                Map.of(
+                        "status", "UP",
+                        "service", "agr-auth-lo"
+                )
+        );
     }
 }
