@@ -2,14 +2,18 @@
 # Levantar todo: docker compose up --build -d --wait
 #
 # Convención: el servicio, el contenedor y la carpeta se llaman igual (agr-<nombre>-<nivel>).
+# Entrada (S2 · Reverse Proxy): agr-proxy-rp es el único componente con puertos
+# publicados hacia fuera. "/" va a agr-web-fr y "/api/..." a agr-gateway-or (sin /api).
 # Redes (S3 · Network Segmentation; diseño en p3/s3/flujos-permitidos.md y detalle en la sección REDES):
-#   agr-edge-net         web + CLI + gateway      (la presentación solo alcanza al gateway)
+#   agr-public-net       proxy                    (la única red que publica puertos)
+#   agr-edge-net         proxy + web + CLI + gateway (internal: nadie entra sin el proxy)
 #   agr-back-net         gateway + servicios      (el gateway llega a los servicios)
 #   agr-<x>-data-net     un servicio + su base    (ningún servicio ve una base ajena)
 #   agr-bus-net          broker + vote/results/audit (solo quien usa mensajería)
 #   agr-mgmt-net         consola de RabbitMQ
-# Solo se publican 3000 (web), 8080 (gateway) y 127.0.0.1:15672 (consola). Para
-# depurar un servicio o una base, usen un docker-compose.override.yml local.
+# Solo se publican 80 (proxy; S1 agrega 443) y 127.0.0.1:15672 (consola). La web
+# (3000) y el gateway (8080) ya no se publican. Para depurar un servicio o una
+# base, usen un docker-compose.override.yml local.
 
 services:
 
@@ -43,7 +47,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://${ELECTIONS_DB_USER:-elections}:${ELECTIONS_DB_PASSWORD:-elections}@agr-elections-db:5432/${ELECTIONS_DB_NAME:-elections}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://localhost}
       SEED_DATA: ${SEED_DATA:-true}
     depends_on:
       agr-elections-db:
@@ -331,8 +335,9 @@ services:
   # ============================================================
   # ORQUESTACIÓN - API GATEWAY (responsable: David)
   # ============================================================
-  # Único punto de entrada de la API. Está en agr-edge-net (lo alcanzan el web y la
-  # CLI) y en agr-back-net (alcanza a los servicios); no ve las bases ni el broker.
+  # Único punto de entrada de la API, detrás de agr-proxy-rp (/api/...). Está en
+  # agr-edge-net (lo alcanzan el proxy, la web y la CLI) y en agr-back-net (alcanza a
+  # los servicios); no ve las bases ni el broker. Sin puertos publicados (S2).
   agr-gateway-or:
     container_name: agr-gateway-or
     build: ./agr-gateway-or
@@ -345,9 +350,7 @@ services:
       AUDIT_SERVICE_URL: http://agr-audit-lo:8005
       ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
       SERVICE_API_KEY: ${SERVICE_API_KEY:-dev-service-key}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    ports:
-      - "8080:8080"
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://localhost}
     depends_on:
       agr-election-lo:
         condition: service_healthy
@@ -374,16 +377,15 @@ services:
   # ============================================================
   # PRESENTACIÓN - WEB, Next.js con SSR (responsable: Cristian)
   # ============================================================
-  # El servidor de Next.js llama al gateway por agr-edge-net; el navegador llama a
-  # localhost:8080 solo para votar y para el SSE de resultados.
+  # El servidor de Next.js llama al gateway por agr-edge-net. El navegador entra por
+  # agr-proxy-rp y llama a "/api/..." (mismo origen) para el login, el voto y el SSE.
+  # Sin puertos publicados (S2).
   agr-web-fr:
     container_name: agr-web-fr
     build: ./agr-web-fr
     environment:
       GATEWAY_INTERNAL_URL: ${GATEWAY_INTERNAL_URL:-http://agr-gateway-or:8080}
-      NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-http://localhost:8080}
-    ports:
-      - "3000:3000"
+      NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-/api}
     depends_on:
       agr-gateway-or:
         condition: service_healthy
@@ -394,6 +396,41 @@ services:
       retries: 6
       start_period: 10s
     networks: [agr-edge-net]
+    restart: unless-stopped
+
+
+  # ============================================================
+  # BORDE - REVERSE PROXY, Nginx (responsable: Cristian)
+  # ============================================================
+  # S2 · Reverse Proxy. Único punto de entrada desde fuera de Docker:
+  #   /         -> agr-web-fr:3000
+  #   /api/...  -> agr-gateway-or:8080/... (sin el prefijo /api; SSE sin buffer)
+  # Límite de 1 MB por petición, encabezados de seguridad y sin Server ni
+  # X-Powered-By. Configuración en agr-proxy-rp/nginx.conf.
+  agr-proxy-rp:
+    container_name: agr-proxy-rp
+    build: ./agr-proxy-rp
+    environment:
+      # S4 · límite de intentos de login por IP (R2 puede subirlo para la carga).
+      LOGIN_RATE: ${LOGIN_RATE:-5r/m}
+      LOGIN_BURST: ${LOGIN_BURST:-5}
+    ports:
+      # PROXY_HTTP_PORT solo por si el 80 está ocupado en algún equipo (IIS, Skype...).
+      - "${PROXY_HTTP_PORT:-80}:80"
+      # S1 · Secure Channel (Miguel): agregar "443:443" y montar los certificados.
+    depends_on:
+      agr-web-fr:
+        condition: service_healthy
+      agr-gateway-or:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    # agr-public-net publica el puerto; agr-edge-net llega a la web y al gateway.
+    networks: [agr-public-net, agr-edge-net]
     restart: unless-stopped
 
 
@@ -425,10 +462,18 @@ services:
 # una red plana donde todos los servicios veían todas las bases).
 networks:
 
-  # --- Zona de borde: lo único alcanzable desde fuera de Docker ---------------
-  # agr-web-fr (3000), agr-gateway-or (8080), agr-admin-fr (CLI)
+  # --- Zona pública: lo único alcanzable desde fuera de Docker (S2) ------------
+  # Solo agr-proxy-rp (puerto 80; con S1 también 443). No es internal porque
+  # desde aquí se publican los puertos.
+  agr-public-net:
+    name: agr-public-net
+
+  # --- Zona de borde: detrás del proxy ----------------------------------------
+  # agr-proxy-rp, agr-web-fr (3000), agr-gateway-or (8080), agr-admin-fr (CLI).
+  # internal desde S2: no se publica nada desde ella y no tiene salida a internet.
   agr-edge-net:
     name: agr-edge-net
+    internal: true
 
   # --- Zona de lógica: el gateway y los servicios -----------------------------
   # agr-gateway-or + agr-auth-lo, agr-voter-lo, agr-election-lo, agr-vote-lo,

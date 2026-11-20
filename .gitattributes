@@ -1,3 +1,10 @@
 # Los scripts que se ejecutan dentro de contenedores Linux necesitan finales de
 # línea LF, aunque el repositorio se clone en Windows (Git los convierte a CRLF).
 *.sh text eol=lf
+
+# Configuración de Nginx con LF, igual en todos los equipos (S2).
+agr-proxy-rp/nginx.conf text eol=lf
+agr-proxy-rp/Dockerfile text eol=lf
+
+# Scripts de PowerShell con CRLF: así los lee bien Windows PowerShell 5.1.
+*.ps1 text eol=crlf

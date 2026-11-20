@@ -1,13 +1,13 @@
 import "server-only";
 
-// Cliente del gateway para el servidor de Next.js (SSR y Server Actions).
+// Cliente del gateway para el servidor de Next.js (SSR de elecciones y resultados).
 // Llama a agr-gateway-or por la red interna (GATEWAY_INTERNAL_URL); el navegador
 // nunca ve estas peticiones. `server-only` hace fallar la compilación si un
 // componente de cliente importa este archivo por error.
 
 import { gatewayInternalUrl, gatewayTimeoutMs } from "@/lib/config";
 import { ApiError, messageFor, readDetail, type Operation } from "./errors";
-import type { Election, ElectionResults, LoginResponse } from "./types";
+import type { Election, ElectionResults } from "./types";
 
 /** Log de cada llamada: método, ruta, código y duración. Nunca cuerpos ni tokens. */
 function logCall(method: string, path: string, status: number | string, started: number) {
@@ -96,18 +96,4 @@ export async function getResults(id: number): Promise<ElectionResults> {
     headers: { Accept: "application/json" },
   });
   return (await response.json()) as ElectionResults;
-}
-
-// ---------------------------------------------------------------------------
-// Autenticación (la usa la Server Action de /ingresar)
-// ---------------------------------------------------------------------------
-
-/** POST /auth/login. 200 con el JWT; 401 si el documento o la clave no coinciden. */
-export async function login(document: string, password: string): Promise<LoginResponse> {
-  const response = await callGateway("login", "/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ document, password }),
-  });
-  return (await response.json()) as LoginResponse;
 }

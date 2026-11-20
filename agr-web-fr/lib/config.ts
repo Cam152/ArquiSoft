@@ -22,9 +22,13 @@ export function gatewayInternalUrl(): string {
   return trimSlash(readEnv("GATEWAY_INTERNAL_URL", "http://agr-gateway-or:8080"));
 }
 
-/** Gateway visto desde el navegador (puerto publicado). Solo para el voto y el SSE. */
+/**
+ * Gateway visto desde el navegador: login, voto y SSE. Por defecto "/api", una ruta
+ * relativa al mismo origen que agr-proxy-rp reenvía al gateway sin el prefijo.
+ * Sirve igual con http://localhost que con https://localhost (S1).
+ */
 export function gatewayPublicUrl(): string {
-  return trimSlash(readEnv("NEXT_PUBLIC_GATEWAY_URL", "http://localhost:8080"));
+  return trimSlash(readEnv("NEXT_PUBLIC_GATEWAY_URL", "/api"));
 }
 
 /** Tiempo máximo de cada llamada del servidor al gateway, en milisegundos. */
