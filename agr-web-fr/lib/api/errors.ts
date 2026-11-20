@@ -1,6 +1,6 @@
-// Único lugar que traduce los códigos de respuesta del gateway a mensajes para el
-// votante. Lo usan tanto el servidor de Next.js (lib/api/server.ts) como el
-// navegador (lib/api/browser.ts), así que no importa nada de Node ni de React.
+// Único lugar que traduce los códigos de respuesta del gateway (y del proxy) a
+// mensajes para el votante. Lo usan tanto el servidor de Next.js (lib/api/server.ts)
+// como el navegador (lib/api/browser.ts), así que no importa nada de Node ni de React.
 
 export type Operation = "elections" | "election" | "results" | "login" | "vote";
 
@@ -21,6 +21,9 @@ type Message = string | ((detail: string | null) => string);
 
 const GENERIC: Partial<Record<number, string>> = {
   0: "No se pudo conectar con AGORA. Revisa tu conexión e intenta de nuevo.",
+  // 413 y 429 los responde agr-proxy-rp antes de llegar al gateway (S2 y S4).
+  413: "La petición es demasiado grande. El máximo permitido es 1 MB.",
+  429: "Hay demasiadas peticiones desde tu conexión. Espera un momento e intenta de nuevo.",
   502: "Un servicio de AGORA no responde. Intenta de nuevo en unos minutos.",
   503: "AGORA no está disponible en este momento. Intenta de nuevo en unos minutos.",
   504: "AGORA tardó demasiado en responder. Intenta de nuevo.",
@@ -33,6 +36,10 @@ const BY_OPERATION: Record<Operation, Partial<Record<number, Message>>> = {
   login: {
     401: "Documento o clave incorrectos.",
     422: "Ingresa tu documento y tu clave.",
+    // S4: agr-auth-lo bloquea la cuenta 15 minutos al quinto intento fallido.
+    423: "Tu cuenta está bloqueada temporalmente por varios intentos fallidos. Intenta de nuevo en 15 minutos.",
+    // S4: el proxy limita los intentos de login por dirección IP.
+    429: "Hiciste demasiados intentos seguidos. Espera un minuto antes de volver a intentarlo.",
   },
   vote: {
     // Sin respuesta: el voto pudo llegar o no. Se le dice al votante cómo saberlo.

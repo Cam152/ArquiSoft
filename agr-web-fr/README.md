@@ -1,31 +1,36 @@
 # agr-web-fr: interfaz web del votante (Next.js con SSR)
 
 Componente de presentación de AGORA. Muestra las elecciones, permite iniciar sesión, votar y seguir los resultados
-en vivo. Las páginas se generan en el servidor de Next.js, que consulta a `agr-gateway-or` por la red interna; el
-navegador solo habla con el gateway para enviar el voto y para recibir los resultados en vivo (SSE).
+en vivo. Las páginas se generan en el servidor de Next.js, que consulta a `agr-gateway-or` por la red interna. Desde
+el Prototipo 3 todo entra por `agr-proxy-rp` (S2): el navegador pide las páginas en `/` y llama al gateway en `/api/...`
+(mismo origen) solo para tres cosas: iniciar sesión, enviar el voto y recibir los resultados en vivo (SSE).
 
 ## 1. Cómo funciona
 
 ```mermaid
 sequenceDiagram
   actor V as Navegador
+  participant P as agr-proxy-rp (Nginx)
   participant W as agr-web-fr (servidor Next.js)
   participant G as agr-gateway-or
-  V->>W: GET /elecciones/1/resultados
+  V->>P: GET /elecciones/1/resultados
+  P->>W: GET /elecciones/1/resultados
   W->>G: GET /results/1 y POST /graphql (red interna)
   G-->>W: conteos con nombres y la elección
-  W-->>V: HTML completo con las barras
-  V->>G: GET /results/1/stream (SSE, localhost:8080)
+  W-->>P: HTML completo con las barras
+  P-->>V: HTML + encabezados de seguridad
+  V->>P: GET /api/results/1/stream (SSE, mismo origen)
+  P->>G: GET /results/1/stream (sin el prefijo, sin buffer)
   G-->>V: event: counts (cada voto contado)
 ```
 
 | Ruta | Se genera en | Llamadas al gateway |
 |---|---|---|
 | `/` | Servidor | `POST /graphql` (elecciones con candidatos), desde el servidor |
-| `/ingresar` | Servidor + Server Action | `POST /auth/login`, desde el servidor (la Server Action) |
-| `/elecciones/[id]/votar` | Servidor + cliente | `POST /graphql` desde el servidor; `POST /votes` con el JWT desde el navegador |
-| `/elecciones/[id]/resultados` | Servidor + cliente | `GET /results/{id}` y `POST /graphql` desde el servidor; `GET /results/{id}/stream` (SSE) desde el navegador |
-| `/api/health` | Servidor | ninguna (*healthcheck* del contenedor) |
+| `/ingresar` | Servidor + cliente | `POST /api/auth/login` desde el navegador, a través del proxy (límite de intentos de S4) |
+| `/elecciones/[id]/votar` | Servidor + cliente | `POST /graphql` desde el servidor; `POST /api/votes` con el JWT desde el navegador |
+| `/elecciones/[id]/resultados` | Servidor + cliente | `GET /results/{id}` y `POST /graphql` desde el servidor; `GET /api/results/{id}/stream` (SSE) desde el navegador |
+| `/api/health` | Servidor | ninguna (*healthcheck* del contenedor; desde fuera, `/api/` es del gateway) |
 
 Para comprobar el SSR basta con abrir "Ver código fuente" en `/`: las elecciones ya vienen en el HTML. En
 `docker compose logs agr-web-fr` aparece cada llamada del servidor al gateway (método, ruta, código y duración).
@@ -49,14 +54,14 @@ agr-web-fr/
 ├── components/                       Componentes de interfaz
 │   ├── SiteHeader.tsx, SessionMenu.tsx
 │   ├── ElectionCard.tsx, StatusBadge.tsx, Notice.tsx, PageError.tsx, RetryButton.tsx
-│   ├── LoginForm.tsx                 (cliente) useActionState + guarda el JWT
+│   ├── LoginForm.tsx                 (cliente) POST /api/auth/login + guarda el JWT
 │   ├── VoteForm.tsx                  (cliente) elegir, confirmar y POST /votes
 │   ├── LiveResults.tsx               (cliente) SSE + combinación con los candidatos
 │   └── ResultBars.tsx
 ├── lib/
 │   ├── api/
 │   │   ├── server.ts                 Cliente del gateway para el servidor (server-only, red interna)
-│   │   ├── browser.ts                Las dos llamadas del navegador: POST /votes y la URL del SSE
+│   │   ├── browser.ts                Las tres llamadas del navegador: login, POST /votes y la URL del SSE
 │   │   ├── errors.ts                 ApiError y traducción de códigos a mensajes (único lugar)
 │   │   └── types.ts                  Tipos de los contratos
 │   ├── config.ts                     Variables de entorno, leídas al ejecutar
@@ -79,7 +84,7 @@ Todos pasan por el gateway (README principal, sección 5.1).
 | Llamada | Desde | Respuesta que se usa |
 |---|---|---|
 | `POST /graphql` `elections` y `election(id)` | Servidor | `id, name, description, status, startsAt, endsAt, isOpen, candidateCount, candidates { id number name description }` |
-| `POST /auth/login` `{document, password}` | Servidor (Server Action) | `{access_token, token_type, expires_in}` |
+| `POST /auth/login` `{document, password}` | Navegador (`/api/auth/login`) | `{access_token, token_type, expires_in}` |
 | `POST /votes` `{election_id, candidate_id}` + `Authorization: Bearer` | Navegador | `201 {"status": "recorded"}` |
 | `GET /results/{id}` | Servidor | `{election_id, election_name, total_votes, results[]}` |
 | `GET /results/{id}/stream` | Navegador | eventos `counts` con `{election_id, total_votes, counts}` |
@@ -90,6 +95,9 @@ en `lib/api/errors.ts`:
 | Código | Dónde | Mensaje | Qué hace la interfaz |
 |---|---|---|---|
 | 401 | Login | "Documento o clave incorrectos." | Conserva el documento y borra la clave |
+| 423 | Login | "Tu cuenta está bloqueada temporalmente…" (Auth Service, S4) | Conserva el documento y borra la clave |
+| 429 | Login | "Hiciste demasiados intentos seguidos…" (proxy, S4) | Conserva el documento y borra la clave |
+| 413 | Cualquiera | "La petición es demasiado grande…" (proxy, S2) | Aviso de error |
 | 401 | Voto | "Tu sesión expiró…" | Cierra la sesión y lleva a `/ingresar?motivo=expirada`; después vuelve a votar |
 | 404 | Páginas | | Página "No encontramos lo que buscas" |
 | 409 | Voto | "Ya votaste en esta elección…" o "La elección no está abierta." (según `detail`) | Rechazo definitivo: ofrece ver resultados |
@@ -102,20 +110,22 @@ en `lib/api/errors.ts`:
 
 | Variable | Por defecto | Uso |
 |---|---|---|
-| `GATEWAY_INTERNAL_URL` | `http://agr-gateway-or:8080` | Gateway visto desde el servidor de Next.js (red `agr-front`) |
-| `NEXT_PUBLIC_GATEWAY_URL` | `http://localhost:8080` | Gateway visto desde el navegador (voto y SSE) |
+| `GATEWAY_INTERNAL_URL` | `http://agr-gateway-or:8080` | Gateway visto desde el servidor de Next.js (red `agr-edge-net`) |
+| `NEXT_PUBLIC_GATEWAY_URL` | `/api` | Gateway visto desde el navegador (login, voto y SSE). Relativa: sirve con HTTP y con HTTPS |
 | `GATEWAY_TIMEOUT_MS` | `8000` | Tiempo máximo de cada llamada del servidor al gateway |
 
 Las tres se leen **al ejecutar**, no al compilar. `NEXT_PUBLIC_GATEWAY_URL` la lee el servidor y la pasa como prop a
-los dos componentes que la necesitan, así que cambiarla no exige reconstruir la imagen.
+los tres componentes que la necesitan, así que cambiarla no exige reconstruir la imagen.
 
 ## 5. Cómo ejecutarlo
 
 **Con Docker Compose** (desde la raíz del repositorio):
 
 ```bash
-docker compose up --build -d --wait agr-web-fr
+docker compose up --build -d --wait agr-proxy-rp   # levanta también la web y el gateway
 ```
+
+La web queda en `http://localhost` (con S1, `https://localhost`); el puerto 3000 ya no se publica.
 
 Bloque del servicio en `docker-compose.yml`:
 
@@ -125,9 +135,7 @@ Bloque del servicio en `docker-compose.yml`:
     build: ./agr-web-fr
     environment:
       GATEWAY_INTERNAL_URL: ${GATEWAY_INTERNAL_URL:-http://agr-gateway-or:8080}
-      NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-http://localhost:8080}
-    ports:
-      - "3000:3000"
+      NEXT_PUBLIC_GATEWAY_URL: ${NEXT_PUBLIC_GATEWAY_URL:-/api}
     depends_on:
       agr-gateway-or:
         condition: service_healthy
@@ -137,11 +145,12 @@ Bloque del servicio en `docker-compose.yml`:
       timeout: 5s
       retries: 6
       start_period: 10s
-    networks: [agr-front]
+    networks: [agr-edge-net]
     restart: unless-stopped
 ```
 
-**Sin Docker** (Node 22 o superior, con el gateway publicado en `localhost:8080`):
+**Sin Docker** (Node 22 o superior). Desde S2 el gateway no publica `8080`; para desarrollar la web fuera de Docker
+hay que publicarlo solo en el equipo con un `docker-compose.override.yml` local (ver `.env.development`):
 
 ```bash
 cd agr-web-fr
@@ -159,10 +168,13 @@ necesita al gateway, porque las páginas se generan en cada petición.
 
 - **SSR en cada petición** (`export const dynamic = "force-dynamic"`). El HTML sale con los datos del momento y
   `next build` no depende de que el gateway esté arriba.
-- **Login por Server Action.** El formulario va al servidor de Next.js (mismo origen) y este llama a
-  `POST /auth/login` por la red interna. Así se cumple que el navegador solo hable con el gateway para votar y para
-  el SSE.
-- **JWT en `sessionStorage`.** El navegador lo necesita para enviar `POST /votes` directo al gateway. La sesión se
+- **Login desde el navegador, por el proxy.** En el Prototipo 2 el login era una Server Action: el servidor de
+  Next.js llamaba a `POST /auth/login` por la red interna. Con el límite de intentos de S4 en el proxy eso ya no
+  sirve, porque todos los intentos saldrían de la IP del contenedor de la web y un solo atacante bloquearía el login
+  de todos. Ahora el formulario llama a `POST /api/auth/login` (mismo origen), así el proxy limita por la IP real de
+  cada votante. El botón queda deshabilitado hasta que React hidrata la página y el formulario es `method="post"`,
+  de modo que la clave nunca termina en la URL.
+- **JWT en `sessionStorage`.** El navegador lo necesita para enviar `POST /api/votes` al gateway. La sesión se
   borra al cerrar la pestaña y se cierra sola cuando vence el token (una hora). Las páginas que se generan en el
   servidor no usan el token, porque elecciones y resultados son públicos.
 - **Resultados en vivo.** El SSE solo trae conteos por candidato; `lib/results.ts` los combina con los candidatos
@@ -172,7 +184,9 @@ necesita al gateway, porque las páginas se generan en cada petición.
 - **Logs sin datos sensibles.** El servidor registra método, ruta, código y duración de cada llamada al gateway;
   nunca cuerpos, claves ni tokens.
 - **Encabezados de seguridad.** `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
-  `Referrer-Policy: same-origin` y sin `X-Powered-By`.
+  `Referrer-Policy: same-origin` y sin `X-Powered-By`. Desde S2 los pone `agr-proxy-rp` en todas las respuestas
+  (también `Content-Security-Policy` y `Permissions-Policy`); los de `next.config.ts` se dejan como respaldo para
+  cuando la web corre sin el proxy.
 
 ## 7. Límites conocidos
 
