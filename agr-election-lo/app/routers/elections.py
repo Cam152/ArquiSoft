@@ -25,7 +25,13 @@ def list_elections(
     status_filter: ElectionStatus | None = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
 ):
-    return services.list_elections(db, status_filter)
+    result = [ElectionSummary.model_validate(e) for e in services.list_elections(db, status_filter)]
+    # Devuelve la conexión al pool antes de que FastAPI serialice la respuesta.
+    # La serialización usa el mismo grupo de hilos que las peticiones; si la
+    # conexión siguiera tomada, con carga alta los hilos esperan conexiones y
+    # las conexiones esperan hilos (bloqueo hasta pool_timeout). Ver Lab 6.
+    db.close()
+    return result
 
 
 @router.get("/{election_id}", response_model=ElectionOut)
@@ -35,7 +41,9 @@ def get_election(election_id: int, db: Session = Depends(get_db)):
     Lo usa el Vote Service para validar que la elección esté abierta (`is_open`)
     y que el candidato exista.
     """
-    return services.get_election(db, election_id)
+    result = ElectionOut.model_validate(services.get_election(db, election_id))
+    db.close()  # misma razón que en list_elections
+    return result
 
 
 @router.get("/{election_id}/candidates/{candidate_id}", response_model=CandidateOut)
