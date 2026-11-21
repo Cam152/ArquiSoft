@@ -1,0 +1,17 @@
+# r1-proxy · http://localhost/api
+VUs      reqs     req/s    p50 ms    p95 ms    p99 ms   error %   checks
+  50      2900      96.7      19.9      44.9      74.1      0.00    2900/2900
+ 200     11042     368.1      43.6     154.7     196.5      0.00    11042/11042
+ 500     23824     794.1     102.7     378.2     510.3      9.27    21615/23824
+1000     40568    1352.3      81.5     974.2    1406.8     61.53    15606/40568
+1500     36288    1209.6     617.7    1704.8    2741.6     46.98    19241/36288
+       50 VUs · GET /elections       p50 20.8 ms · p95 44.9 ms · p99 63.2 ms · error 0.00 %
+       50 VUs · GET /results/{id}    p50 19.2 ms · p95 44.7 ms · p99 77.1 ms · error 0.00 %
+      200 VUs · GET /elections       p50 51.1 ms · p95 160.5 ms · p99 200.4 ms · error 0.00 %
+      200 VUs · GET /results/{id}    p50 38.8 ms · p95 136.2 ms · p99 192.1 ms · error 0.00 %
+      500 VUs · GET /results/{id}    p50 100.3 ms · p95 414.8 ms · p99 512.6 ms · error 9.29 %
+      500 VUs · GET /elections       p50 105.8 ms · p95 360.1 ms · p99 484.9 ms · error 9.25 %
+     1000 VUs · GET /results/{id}    p50 79.3 ms · p95 904.6 ms · p99 1147.1 ms · error 62.54 %
+     1000 VUs · GET /elections       p50 84.2 ms · p95 1039.6 ms · p99 1501.7 ms · error 60.53 %
+     1500 VUs · GET /elections       p50 672.8 ms · p95 1794.5 ms · p99 2897.7 ms · error 43.76 %
+     1500 VUs · GET /results/{id}    p50 563.2 ms · p95 1624.8 ms · p99 2475.9 ms · error 50.19 %

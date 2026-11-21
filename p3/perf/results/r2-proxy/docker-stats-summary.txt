@@ -1,0 +1,17 @@
+contenedor                         CPU prom % CPU máx % mem máx MiB
+agr-auth-lo                             316.8      926.2        314.4
+agr-broker-as                            26.6      217.6        268.6
+arquisoft-agr-gateway-or-1               17.3       77.0        144.0
+agr-audit-db                             11.3       65.4        357.4
+agr-votes-db                             12.4       64.1        286.0
+agr-election-lo                          13.8       38.5        391.2
+agr-vote-lo                               3.4       20.1         21.6
+agr-voters-db                             2.1       18.1         41.9
+agr-auth-db                               2.4       18.0         61.7
+agr-audit-lo                              3.8       17.0         55.6
+agr-voter-lo                              2.7       16.5        259.2
+agr-proxy-rp                              1.7       14.8         16.1
+agr-results-lo                            1.8       13.6         11.3
+agr-elections-db                          2.7        9.7         90.5
+agr-results-db                            2.2        8.3         15.6
+agr-web-fr                                0.4        7.2         45.0
