@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import LoginForm from "@/components/LoginForm";
+import { gatewayPublicUrl } from "@/lib/config";
 import { safeReturnPath } from "@/lib/navigation";
+
+// La URL pública del gateway se lee al ejecutar, como en /votar y /resultados.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Ingresar" };
 
@@ -17,7 +21,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <h1>Ingresar</h1>
         <p>Usa tu número de documento y la clave que te asignaron.</p>
       </header>
-      <LoginForm returnTo={safeReturnPath(volver)} expired={motivo === "expirada"} />
+      <LoginForm
+        gatewayUrl={gatewayPublicUrl()}
+        returnTo={safeReturnPath(volver)}
+        expired={motivo === "expirada"}
+      />
     </section>
   );
 }

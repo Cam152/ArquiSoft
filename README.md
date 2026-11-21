@@ -48,14 +48,15 @@ con sus tácticas, su patrón y evidencias **antes** (en el Prototipo 2) y **des
 |---|---|---|
 | Entrada al sistema | `localhost:3000` (web) y `localhost:8080` (gateway), en HTTP | Solo `https://localhost` (443) a través de `agr-proxy-rp`; el puerto 80 solo redirige |
 | Puertos publicados | 3000, 8080 y 15672 | 443, 80 y `127.0.0.1:15672` |
-| Llamadas del navegador al gateway | `http://localhost:8080/...` (otro origen, con CORS) | `https://localhost/api/...` (mismo origen), con `NEXT_PUBLIC_GATEWAY_URL=https://localhost/api` |
+| Llamadas del navegador al gateway | `http://localhost:8080/...` (otro origen, con CORS) | `/api/...` en el mismo origen (login, voto y SSE), con `NEXT_PUBLIC_GATEWAY_URL=/api`: la ruta relativa sirve igual con HTTP y con HTTPS |
 | Componentes | 16 | 17: se agrega `agr-proxy-rp` (Nginx) |
 | Redes | `agr-front`, `agr-back` y `agr-data` | Diez redes segmentadas más `agr-public-net` |
 | Login | Sin límite de intentos | Límite por IP y bloqueo de cuenta (S4) |
 | Auditoría | Eventos sueltos | Cadena de hashes verificable (S5) |
 
 El servidor de Next.js y la CLI siguen llamando al gateway por la red interna (`http://agr-gateway-or:8080`), así que
-no pasan por el proxy. La ruta `/api/health` de la web solo la usa su propio healthcheck dentro del contenedor.
+no pasan por el proxy. El login sí sale del navegador (`/api/auth/login`), para que el límite de S4 vea la IP de cada
+votante. La ruta `/api/health` de la web solo la usa su propio healthcheck dentro del contenedor.
 
 ## Rendimiento y escalabilidad
 
