@@ -1,0 +1,16 @@
+# Ajustes para las pruebas de carga con el proxy (R1, R2, R3 y R4).
+#
+# Uso (desde la raíz del repo):
+#   docker compose -f docker-compose.yml -f p3/perf/docker-compose.perf.yml up -d --wait
+#   ... --scale agr-gateway-or=3   (R4)
+#
+# S4 limita el login a 5 intentos por minuto por IP. k6 sale de una sola IP, así
+# que con ese límite R2 mide el 429 y no el sistema: aquí se sube a 100000 por
+# segundo (en la práctica, desactivado). El resto del proxy (encabezados, 1 MB,
+# rutas, registro) queda igual, así que el costo de la seguridad sí se mide.
+
+services:
+  agr-proxy-rp:
+    environment:
+      LOGIN_RATE: ${PERF_LOGIN_RATE:-100000r/s}
+      LOGIN_BURST: ${PERF_LOGIN_BURST:-100000}

@@ -1,0 +1,17 @@
+# r4-3x · http://localhost/api
+VUs      reqs     req/s    p50 ms    p95 ms    p99 ms   error %   checks
+  50      2908      96.9      19.2      54.1     100.9      0.00    2908/2908
+ 200     10972     365.7      44.0     149.9     227.4      0.00    10972/10972
+ 500     24314     810.5     113.2     326.6     543.3      0.00    24314/24314
+1000     31320    1044.0     472.9     727.6    1878.3      0.00    31320/31320
+1500     30662    1022.1     991.4    1309.2    4088.1      0.00    30662/30662
+       50 VUs · GET /elections       p50 21.9 ms · p95 62.1 ms · p99 110.8 ms · error 0.00 %
+       50 VUs · GET /results/{id}    p50 17.0 ms · p95 44.9 ms · p99 85.9 ms · error 0.00 %
+      200 VUs · GET /results/{id}    p50 38.3 ms · p95 118.9 ms · p99 152.1 ms · error 0.00 %
+      200 VUs · GET /elections       p50 54.3 ms · p95 171.4 ms · p99 275.3 ms · error 0.00 %
+      500 VUs · GET /elections       p50 123.3 ms · p95 354.6 ms · p99 664.9 ms · error 0.00 %
+      500 VUs · GET /results/{id}    p50 105.5 ms · p95 292.3 ms · p99 390.3 ms · error 0.00 %
+     1000 VUs · GET /results/{id}    p50 464.1 ms · p95 695.4 ms · p99 764.4 ms · error 0.00 %
+     1000 VUs · GET /elections       p50 482.0 ms · p95 773.0 ms · p99 2475.8 ms · error 0.00 %
+     1500 VUs · GET /elections       p50 1011.3 ms · p95 1732.0 ms · p99 4531.8 ms · error 0.00 %
+     1500 VUs · GET /results/{id}    p50 973.6 ms · p95 1252.6 ms · p99 1338.6 ms · error 0.00 %

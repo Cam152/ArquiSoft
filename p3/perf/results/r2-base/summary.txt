@@ -1,0 +1,17 @@
+# r2-base · http://localhost:8080
+VUs      reqs     req/s    p50 ms    p95 ms    p99 ms   error %   checks
+  10       540      18.0      54.5     111.8     166.5      0.00    540/540
+  25      1350      45.0      59.7     151.5     190.2      0.00    1350/1350
+  50      2700      90.0      68.3     156.1     344.4      0.00    2700/2700
+ 100      5422     180.7      55.2     154.2     454.9      0.00    5422/5422
+ 200      6722     224.1      69.1    1015.7    1688.2      0.00    6722/6722
+       10 VUs · POST /votes          p50 20.4 ms · p95 32.8 ms · p99 38.5 ms · error 0.00 %
+       10 VUs · POST /auth/login     p50 85.8 ms · p95 121.6 ms · p99 172.7 ms · error 0.00 %
+       25 VUs · POST /auth/login     p50 86.0 ms · p95 170.2 ms · p99 212.8 ms · error 0.00 %
+       25 VUs · POST /votes          p50 17.3 ms · p95 33.4 ms · p99 41.2 ms · error 0.00 %
+       50 VUs · POST /auth/login     p50 88.9 ms · p95 174.6 ms · p99 507.8 ms · error 0.00 %
+       50 VUs · POST /votes          p50 16.6 ms · p95 33.1 ms · p99 55.9 ms · error 0.00 %
+      100 VUs · POST /votes          p50 13.5 ms · p95 25.1 ms · p99 31.8 ms · error 0.00 %
+      100 VUs · POST /auth/login     p50 82.8 ms · p95 237.6 ms · p99 665.0 ms · error 0.00 %
+      200 VUs · POST /votes          p50 17.7 ms · p95 29.9 ms · p99 42.9 ms · error 0.00 %
+      200 VUs · POST /auth/login     p50 793.5 ms · p95 1442.9 ms · p99 1840.8 ms · error 0.00 %

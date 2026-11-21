@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .database import get_db, init_db, wait_for_db
+from .database import engine, get_db, init_db, wait_for_db
 from .graphql_api import graphql_router
 from .routers import elections
 from .seed import seed
@@ -20,9 +20,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     wait_for_db()
-    init_db()
-    if settings.seed_data:
-        seed()
+    if engine.dialect.name == "postgresql":
+        # Con varios workers, cada proceso ejecuta este arranque. El candado
+        # evita que dos procesos creen las tablas o siembren datos a la vez.
+        with engine.connect() as conn:
+            conn.execute(text("SELECT pg_advisory_lock(424242)"))
+            try:
+                init_db()
+                if settings.seed_data:
+                    seed()
+            finally:
+                conn.execute(text("SELECT pg_advisory_unlock(424242)"))
+    else:
+        init_db()
+        if settings.seed_data:
+            seed()
     yield
 
 

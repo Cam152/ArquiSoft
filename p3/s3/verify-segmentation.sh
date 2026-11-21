@@ -69,20 +69,24 @@ classify() { # $1 origen  $2 destino
   else echo X; fi
 }
 
-running=$(docker ps --format '{{.Names}}' | grep '^agr-' | sort)
+# Servicios en ejecución (por nombre de servicio de Compose). Desde R4 el gateway no
+# tiene container_name y puede tener réplicas (arquisoft-agr-gateway-or-N): cname
+# devuelve el contenedor de cada servicio (la primera réplica).
+running=$(docker ps --format '{{.Label "com.docker.compose.service"}}' | grep '^agr-' | sort -u)
+cname() { docker ps --filter "label=com.docker.compose.service=$1" --format '{{.Names}}' | sort | head -n1; }
 present=(); for c in "${ORDER[@]}"; do grep -qx "$c" <<<"$running" && present+=("$c"); done
 
 # lista "nombre puerto ip1,ip2" de los destinos
 targets=""
 for d in "${present[@]}"; do
-  ips=$(docker inspect "$d" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}},{{end}}')
+  ips=$(docker inspect "$(cname "$d")" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}},{{end}}')
   targets+="$d ${PORT[$d]} ${ips%,}"$'\n'
 done
 
 # destinos cuyo puerto de servicio está publicado fuera de 127.0.0.1
 declare -A PUB=()
 for d in "${present[@]}"; do
-  docker port "$d" "${PORT[$d]}" 2>/dev/null | grep -qv '^127\.0\.0\.1' && PUB[$d]=1
+  docker port "$(cname "$d")" "${PORT[$d]}" 2>/dev/null | grep -qv '^127\.0\.0\.1' && PUB[$d]=1
 done
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
@@ -90,7 +94,7 @@ REP="$TMP/report.txt"
 
 probe() { # $1 origen -> $TMP/<origen>
   local src="$1"
-  docker run --rm --network "container:$src" -e SRC="$src" -e TARGETS="$targets" "$IMG" sh -c '
+  docker run --rm --network "container:$(cname "$src")" -e SRC="$src" -e TARGETS="$targets" "$IMG" sh -c '
     echo "$TARGETS" | while read -r name port ips; do
       [ -z "$name" ] && continue
       [ "$name" = "$SRC" ] && { echo "$name SELF"; continue; }
@@ -118,7 +122,7 @@ for s in "${present[@]}"; do probe "$s" & done; wait
   echo
   echo "Redes de cada contenedor:"
   for c in "${present[@]}"; do
-    printf '  %-17s %s\n' "$c" "$(docker inspect "$c" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')"
+    printf '  %-17s %s\n' "$c" "$(docker inspect "$(cname "$c")" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}')"
   done
   echo
   echo "Leyenda de celda: F#=flujo permitido abierto · R=inverso de flujo permitido · B8=servicio<->servicio (riesgo aceptado)"
@@ -142,7 +146,7 @@ for s in "${present[@]}"; do
       NAME|IP)
         c=$(classify "$s" "$d"); cell="$c"
         if [[ $c == X && $r == IP && -n "${PUB[$d]:-}" ]]; then
-          c=P; cell=P; nP+=1; plist+="  $s -> $d:${PORT[$d]} (puerto publicado: $(docker port "$d" "${PORT[$d]}" | head -1))"$'\n'
+          c=P; cell=P; nP+=1; plist+="  $s -> $d:${PORT[$d]} (puerto publicado: $(docker port "$(cname "$d")" "${PORT[$d]}" | head -1))"$'\n'
         fi
         case "$c" in F*) nF+=1;; R) nR+=1;; B8) nB8+=1;; X) nX+=1; xlist+="  $s -> $d:${PORT[$d]} ($r)"$'\n'; [[ $r == IP ]] && cell="X*";; esac;;
       *) cell="."; nBlocked+=1;;

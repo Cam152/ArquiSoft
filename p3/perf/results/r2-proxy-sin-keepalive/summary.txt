@@ -1,0 +1,17 @@
+# r2-proxy · http://localhost/api
+VUs      reqs     req/s    p50 ms    p95 ms    p99 ms   error %   checks
+  10       560      18.7      52.5     111.9     121.6      0.00    560/560
+  25      1368      45.6      61.4     116.8     162.1      0.00    1368/1368
+  50      2700      90.0      57.3     192.9     282.5      0.00    2700/2700
+ 100      5200     173.3      69.5     207.0     484.4      0.00    5200/5200
+ 200      6868     228.9      78.0    1001.8    1558.1      0.00    6868/6868
+       10 VUs · POST /votes          p50 16.7 ms · p95 27.9 ms · p99 34.3 ms · error 0.00 %
+       10 VUs · POST /auth/login     p50 85.2 ms · p95 115.8 ms · p99 127.9 ms · error 0.00 %
+       25 VUs · POST /auth/login     p50 88.0 ms · p95 125.2 ms · p99 182.6 ms · error 0.00 %
+       25 VUs · POST /votes          p50 14.5 ms · p95 27.9 ms · p99 45.4 ms · error 0.00 %
+       50 VUs · POST /auth/login     p50 97.8 ms · p95 211.1 ms · p99 373.1 ms · error 0.00 %
+       50 VUs · POST /votes          p50 15.8 ms · p95 29.9 ms · p99 39.3 ms · error 0.00 %
+      100 VUs · POST /votes          p50 16.8 ms · p95 28.7 ms · p99 40.7 ms · error 0.00 %
+      100 VUs · POST /auth/login     p50 153.4 ms · p95 240.2 ms · p99 704.2 ms · error 0.00 %
+      200 VUs · POST /votes          p50 17.5 ms · p95 27.8 ms · p99 36.5 ms · error 0.00 %
+      200 VUs · POST /auth/login     p50 751.6 ms · p95 1336.1 ms · p99 1671.4 ms · error 0.00 %
