@@ -202,13 +202,18 @@ jobs:
         run: docker compose up --build --detach --wait --wait-timeout 180
       - name: Comprobar cada componente
         run: |
-          # Solo se publican 3000, 8080 y 15672: los servicios se prueban a través del gateway
-          curl --fail --silent --show-error http://localhost:8080/health
-          curl --fail --silent --show-error --output /dev/null http://localhost:8080/elections
-          curl --fail --silent --show-error --output /dev/null http://localhost:8080/results/1
-          # Web (SSR): healthcheck y página de inicio generada en el servidor
-          curl --fail --silent --show-error http://localhost:3000/api/health
-          curl --fail --silent --show-error --output /dev/null http://localhost:3000
+          # Desde S2 solo se publican 80 (agr-proxy-rp) y 127.0.0.1:15672: todo se prueba a través del proxy
+          # Gateway por /api (el proxy quita el prefijo)
+          curl --fail --silent --show-error http://localhost/api/health
+          curl --fail --silent --show-error --output /dev/null http://localhost/api/elections
+          curl --fail --silent --show-error --output /dev/null http://localhost/api/results/1
+          # Web (SSR): página de inicio por el proxy y healthcheck dentro del contenedor
+          curl --fail --silent --show-error --output /dev/null http://localhost/
+          docker compose exec -T agr-web-fr wget -qO- http://127.0.0.1:3000/api/health
+          # S2: la web y el gateway ya no se alcanzan directo, y /api/admin no se expone
+          if curl --silent --output /dev/null --max-time 3 http://localhost:8080/health; then echo "8080 sigue publicado"; exit 1; fi
+          if curl --silent --output /dev/null --max-time 3 http://localhost:3000/; then echo "3000 sigue publicado"; exit 1; fi
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost/api/admin/elections)" = 404
           # Consola de RabbitMQ y topología cargada desde definitions.json
           curl --fail --silent --show-error --user agora:agora http://localhost:15672/api/exchanges/%2F/agora.votes
           # CLI de administración contra el gateway
