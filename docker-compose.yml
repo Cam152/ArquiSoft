@@ -338,8 +338,10 @@ services:
   # Único punto de entrada de la API, detrás de agr-proxy-rp (/api/...). Está en
   # agr-edge-net (lo alcanzan el proxy, la web y la CLI) y en agr-back-net (alcanza a
   # los servicios); no ve las bases ni el broker. Sin puertos publicados (S2).
+  # Sin container_name (R4): así puede correr con varias réplicas
+  # (docker compose up --scale agr-gateway-or=3) y el proxy las encuentra a todas
+  # por el nombre del servicio. Los contenedores se llaman arquisoft-agr-gateway-or-N.
   agr-gateway-or:
-    container_name: agr-gateway-or
     build: ./agr-gateway-or
     environment:
       AUTH_SERVICE_URL: http://agr-auth-lo:8081
