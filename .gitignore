@@ -333,4 +333,7 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/go,python,visualstudiocode,linux,windows,java,react,nextjs
 
+
+#Documents whose submission is not mandatory
 p2_1b.pdf
+[SwArch_2026ii] - Laboratory 6.pdf
