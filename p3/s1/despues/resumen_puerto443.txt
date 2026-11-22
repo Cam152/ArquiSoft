@@ -1,0 +1,12 @@
+AGORA - Prototipo 3 - S1 Secure Channel - captura de trafico (fase: despues, puerto: 443)
+Fecha: 2026-11-22 05:28:46 -05:00
+==============================================================================
+Peticion enviada: POST https://localhost/api/auth/login  (documento 1001)
+Respuesta: HTTP/1.1 200 OK
+Paquetes capturados en el puerto 443: 19
+
+Documento legible en la captura : NO
+Clave legible en la captura     : NO
+Token JWT legible en la captura : NO
+
+No aparece ninguna credencial en claro: el contenido viaja cifrado (TLS).

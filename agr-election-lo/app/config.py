@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     seed_data: bool = True
     db_connect_retries: int = 30
     db_connect_delay_seconds: float = 1.0
+    # Pool de conexiones por proceso (uvicorn --workers). Total de conexiones:
+    # workers × (pool_size + max_overflow); debe quedar bajo max_connections
+    # de PostgreSQL (100). pool_timeout menor que el timeout del gateway (5 s)
+    # para fallar rápido en vez de procesar peticiones ya abandonadas.
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
+    db_pool_timeout: float = 3.0
 
     @property
     def cors_origin_list(self) -> list[str]:
