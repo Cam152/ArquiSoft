@@ -1,0 +1,51 @@
+10:37:00.710772 ?     In  IP 172.27.0.1.55552 > 172.27.0.2.80: Flags [S], seq 1097232790, win 64240, options [mss 1460,sackOK,TS val 824593542 ecr 0,nop,wscale 7], length 0
+E..<e,@.@.}V...........PAfq.........Xh.........
+1&L.........
+10:37:00.710829 ?     Out IP 172.27.0.2.80 > 172.27.0.1.55552: Flags [S.], seq 1197925504, ack 1097232791, win 65160, options [mss 1460,sackOK,TS val 1836640 ecr 824593542,nop,wscale 7], length 0
+E..<..@.@............P..Gf..Afq.....Xh.........
+...`1&L.....
+10:37:00.710900 ?     In  IP 172.27.0.1.55552 > 172.27.0.2.80: Flags [.], ack 1, win 502, options [nop,nop,TS val 824593543 ecr 1836640], length 0
+E..4e-@.@.}]...........PAfq.Gf......X`.....
+1&L....`
+10:37:00.734252 ?     In  IP 172.27.0.1.55552 > 172.27.0.2.80: Flags [P.], seq 1:180, ack 1, win 502, options [nop,nop,TS val 824593566 ecr 1836640], length 179: HTTP: POST /api/auth/login HTTP/1.1
+E...e.@.@.|............PAfq.Gf......Y......
+1&L....`POST /api/auth/login HTTP/1.1
+Host: localhost
+User-Agent: curl/8.22.0
+Accept: */*
+Content-Type: application/json
+Content-Length: 39
+
+{"document":"1001","password":"123456"}
+10:37:00.734303 ?     Out IP 172.27.0.2.80 > 172.27.0.1.55552: Flags [.], ack 180, win 508, options [nop,nop,TS val 1836663 ecr 824593566], length 0
+E..4..@.@............P..Gf..AfrJ....X`.....
+...w1&L.
+10:37:03.091307 ?     Out IP 172.27.0.2.80 > 172.27.0.1.55552: Flags [P.], seq 1:871, ack 180, win 508, options [nop,nop,TS val 1839020 ecr 824593566], length 870: HTTP: HTTP/1.1 200 OK
+E.....@.@............P..Gf..AfrJ....[......
+....1&L.HTTP/1.1 200 OK
+Date: Sun, 22 Nov 2026 10:37:03 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 256
+Connection: keep-alive
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: same-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+Cross-Origin-Opener-Policy: same-origin
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+reading from file /out/captura_puerto80.pcap, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144
+Warning: interface names might be incorrect
+{"access_token":"eyJhbGciOiJIUzI1NiJ9.eyJ2b3Rlcl9pZCI6MSwiZG9jdW1lbnQiOiIxMDAxIiwibmFtZSI6IkFuYSBHYXJjaWEiLCJzdWIiOiIxMDAxIiwiaWF0IjoxNzk1MzQzODIyLCJleHAiOjE3OTUzNDc0MjJ9.wTY40V2ofvk9sD9bgxZaoC73StJKg06TeT7YIKGaPyc","token_type":"Bearer","expires_in":3600}
+10:37:03.091509 ?     In  IP 172.27.0.1.55552 > 172.27.0.2.80: Flags [.], ack 871, win 498, options [nop,nop,TS val 824595923 ecr 1839020], length 0
+E..4e/@.@.}[...........PAfrJGf......X`.....
+1&U.....
+10:37:03.094292 ?     In  IP 172.27.0.1.55552 > 172.27.0.2.80: Flags [F.], seq 180, ack 871, win 502, options [nop,nop,TS val 824595926 ecr 1839020], length 0
+E..4e0@.@.}Z...........PAfrJGf......X`.....
+1&U.....
+10:37:03.094519 ?     Out IP 172.27.0.2.80 > 172.27.0.1.55552: Flags [F.], seq 871, ack 181, win 508, options [nop,nop,TS val 1839023 ecr 824595926], length 0
+E..4..@.@............P..Gf..AfrK....X`.....
+....1&U.
+10:37:03.094596 ?     In  IP 172.27.0.1.55552 > 172.27.0.2.80: Flags [.], ack 872, win 502, options [nop,nop,TS val 824595926 ecr 1839023], length 0
+E..4e1@.@.}Y...........PAfrKGf......X`.....
+1&U.....

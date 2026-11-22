@@ -1,0 +1,54 @@
+reading from file /out/captura_puerto80.pcap, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144
+Warning: interface names might be incorrect
+10:28:56.750845 ?     In  IP 172.27.0.1.41936 > 172.27.0.2.80: Flags [S], seq 3610412517, win 64240, options [mss 1460,sackOK,TS val 824109462 ecr 0,nop,wscale 7], length 0
+E..<"{@.@..............P.2..........Xh.........
+1...........
+10:28:56.750890 ?     Out IP 172.27.0.2.80 > 172.27.0.1.41936: Flags [S.], seq 3254216097, ack 3610412518, win 65160, options [mss 1460,sackOK,TS val 1352559 ecr 824109462,nop,wscale 7], length 0
+E..<..@.@............P....e..2......Xh.........
+...o1.......
+10:28:56.750934 ?     In  IP 172.27.0.1.41936 > 172.27.0.2.80: Flags [.], ack 1, win 502, options [nop,nop,TS val 824109463 ecr 1352559], length 0
+E..4"|@.@..............P.2....e.....X`.....
+1......o
+10:28:56.752479 ?     In  IP 172.27.0.1.41936 > 172.27.0.2.80: Flags [P.], seq 1:180, ack 1, win 502, options [nop,nop,TS val 824109464 ecr 1352559], length 179: HTTP: POST /api/auth/login HTTP/1.1
+E..."}@.@..Z...........P.2....e.....Y......
+1......oPOST /api/auth/login HTTP/1.1
+Host: localhost
+User-Agent: curl/8.22.0
+Accept: */*
+Content-Type: application/json
+Content-Length: 39
+
+{"document":"1001","password":"123456"}
+10:28:56.752511 ?     Out IP 172.27.0.2.80 > 172.27.0.1.41936: Flags [.], ack 180, win 508, options [nop,nop,TS val 1352561 ecr 824109464], length 0
+E..47.@.@..p.........P....e..2......X`.....
+...q1...
+10:28:56.760550 ?     Out IP 172.27.0.2.80 > 172.27.0.1.41936: Flags [P.], seq 1:348, ack 180, win 508, options [nop,nop,TS val 1352569 ecr 824109464], length 347: HTTP: HTTP/1.1 301 Moved Permanently
+E...7.@.@............P....e..2......Y......
+...y1...HTTP/1.1 301 Moved Permanently
+Date: Sun, 22 Nov 2026 10:28:56 GMT
+Content-Type: text/html
+Content-Length: 162
+Connection: keep-alive
+Location: https://localhost/api/auth/login
+
+<html>
+<head><title>301 Moved Permanently</title></head>
+<body>
+<center><h1>301 Moved Permanently</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
+
+10:28:56.760749 ?     In  IP 172.27.0.1.41936 > 172.27.0.2.80: Flags [.], ack 348, win 501, options [nop,nop,TS val 824109472 ecr 1352569], length 0
+E..4"~@.@..............P.2....f.....X`.....
+1......y
+10:28:56.763091 ?     In  IP 172.27.0.1.41936 > 172.27.0.2.80: Flags [F.], seq 180, ack 348, win 501, options [nop,nop,TS val 824109475 ecr 1352569], length 0
+E..4".@.@..............P.2....f.....X`.....
+1......y
+10:28:56.763486 ?     Out IP 172.27.0.2.80 > 172.27.0.1.41936: Flags [F.], seq 348, ack 181, win 508, options [nop,nop,TS val 1352572 ecr 824109475], length 0
+E..47.@.@..n.........P....f..2......X`.....
+...|1...
+10:28:56.763627 ?     In  IP 172.27.0.1.41936 > 172.27.0.2.80: Flags [.], ack 349, win 501, options [nop,nop,TS val 824109475 ecr 1352572], length 0
+E..4".@.@..
+...........P.2....f.....X`.....
+1......|

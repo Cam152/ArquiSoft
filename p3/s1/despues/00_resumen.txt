@@ -1,0 +1,55 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:30:34 -05:00   Entrada: https://localhost
+==============================================================================
+
+Resultado: todas las pruebas pasan (revise las marcadas INFO) 
+
+Id  Estado Prueba                                                  Detalle                                                                                                                                
+--  ------ ------                                                  -------                                                                                                                                
+01a OK     Llave y certificado existen y estan en .gitignore       llave ignorada=True certificado ignorado=True                                                                                          
+01b OK     Ninguna llave ni certificado versionado                 archivos versionados: 0                                                                                                                
+01c OK     Certificados montados en solo lectura                   /etc/nginx/certs|false;                                                                                                                
+01d OK     La llave no esta dentro de la imagen                    carpeta /etc/nginx/certs ausente en la imagen                                                                                          
+02a OK     SAN: localhost, 127.0.0.1 y ::1                         ver 02_certificado_y_san.txt                                                                                                           
+02b OK     El proxy sirve el certificado generado                  huellas SHA-256 iguales                                                                                                                
+02c OK     El certificado valida contra localhost, 127.0.0.1 y ::1 localhost=True 127.0.0.1=True ::1=True                                                                                                 
+03  OK     Sintaxis de Nginx valida                                codigo 0                                                                                                                               
+04a OK     TLS 1.2 aceptado                                        Ciphersuite: ECDHE-RSA-AES256-GCM-SHA384                                                                                               
+04b OK     TLS 1.3 aceptado                                        Ciphersuite: TLS_AES_256_GCM_SHA384                                                                                                    
+04c OK     TLS 1.1 rechazado                                       el servidor respondio con una alerta de version de protocolo                                                                           
+05a OK     GET / por HTTP -> 301 a https://localhost/              HTTP 301 https://localhost/                                                                                                            
+05b OK     Se conservan la ruta y la consulta                      https://localhost/api/health?x=1                                                                                                       
+05c OK     Sin HSTS en la respuesta HTTP                           Strict-Transport-Security ausente en el 80                                                                                             
+05d OK     POST por HTTP no llega al gateway                       HTTP 301                                                                                                                               
+06  OK     HSTS en las respuestas HTTPS (incluidos los errores)    / -> 200 | /api/health -> 200 | /api/ruta-que-no-existe -> 404                                                                         
+07a OK     https://localhost/ responde                             HTTP 200                                                                                                                               
+07b OK     https://localhost/ingresar responde                     HTTP 200                                                                                                                               
+07c OK     /api/health llega al gateway                            HTTP 200                                                                                                                               
+07d OK     /api/elections llega al gateway                         HTTP 200                                                                                                                               
+08  OK     curl -v conecta por TLS 1.2 y por TLS 1.3               codigos de salida: 1.2=0 1.3=0                                                                                                         
+09a OK     443 y 80 abiertos; AGORA no publica 3000 ni 8080        443=True 80=True | AGORA publica 3000=False 8080=False                                                                                 
+09c INFO   Puertos 3000/8080 ocupados en el equipo                 3000=False 8080=True: no los publica AGORA (ver docker ps arriba); los usa otro programa. Busque cual con: netstat -ano | findstr :8080
+09b OK     Solo el proxy publica 80 y 443                          0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp                                                           
+10a OK     Login por HTTPS                                         HTTP 200                                                                                                                               
+10b OK     Elecciones por HTTPS (GraphQL)                          HTTP 200, eleccion 1                                                                                                                   
+10c OK     Voto por HTTPS                                          HTTP 409 (ya habia votado: valido)                                                                                                     
+10d OK     Resultados en vivo (SSE) por HTTPS                      text/event-stream; eventos recibidos: 1                                                                                                
+10e OK     Resultados por HTTPS                                    HTTP 200                                                                                                                               
+11a OK     Encabezados de seguridad y sin Server/X-Powered-By      3 rutas revisadas                                                                                                                      
+11b OK     /api/admin no se expone                                 HTTP 404                                                                                                                               
+11c OK     Mas de 1 MB -> 413 del proxy                            HTTP 413                                                                                                                               
+12  OK     S4 limit_req_zone                                       limit_req_zone \$binary_remote_addr zone=login_limit                                                                                   
+12  OK     S4 limit_req en el login                                limit_req zone=login_limit                                                                                                             
+12  OK     S4 respuesta 429                                        limit_req_status 429                                                                                                                   
+12  OK     R4 keepalive del gateway                                keepalive 64                                                                                                                           
+12  OK     R4 resolve por DNS                                      server agr-gateway-or:8080 resolve                                                                                                     
+12  OK     S2 SSE sin buffer                                       proxy_buffering off                                                                                                                    
+12  OK     S2 limite de 1 MB                                       client_max_body_size 1m                                                                                                                
+12  OK     S1 solo TLS 1.2 y 1.3                                   ssl_protocols\s+TLSv1\.2 TLSv1\.3                                                                                                      
+12a OK     S3: agr-edge-net sigue siendo internal                  internal=true                                                                                                                          
+12b OK     S3: en agr-public-net solo esta el proxy                agr-proxy-rp                                                                                                                           
+12c OK     R4: el gateway no publica puertos                       replicas=1                                                                                                                             
+13  OK     3 replicas detras del proxy con TLS                     destinos distintos vistos: 3 de 3                                                                                                      
+
+
+

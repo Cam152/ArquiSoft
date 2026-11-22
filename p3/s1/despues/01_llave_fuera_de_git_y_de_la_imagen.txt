@@ -1,0 +1,15 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:29:15 -05:00   Entrada: https://localhost
+==============================================================================
+
+> git check-ignore -v p3/s1/certs/localhost.key
+.gitignore:338:p3/s1/certs/	p3/s1/certs/localhost.key
+
+> git ls-files *.key *.crt *.pem p3/s1/certs   (debe estar vacio)
+
+> docker inspect agr-proxy-rp (montajes: destino|escritura)
+/etc/nginx/certs|false;
+
+> ls /etc/nginx/certs DENTRO DE LA IMAGEN, sin montajes (debe no existir)
+ls: /etc/nginx/certs: No such file or directory
+codigo=1

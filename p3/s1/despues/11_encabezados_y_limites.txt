@@ -1,0 +1,39 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:29:53 -05:00   Entrada: https://localhost
+==============================================================================
+
+Problemas de encabezados: ninguno 
+> curl.exe -k GET https://localhost/api/admin/audit
+HTTP 404
+HTTP/1.1 404 Not Found
+Date: Sun, 22 Nov 2026 10:29:52 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 35
+Connection: keep-alive
+Strict-Transport-Security: max-age=31536000
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: same-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+Cross-Origin-Opener-Policy: same-origin
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+{"detail":"Recurso no encontrado."}
+
+> curl.exe -k POST https://localhost/api/votes
+HTTP 413
+HTTP/1.1 413 Request Entity Too Large
+Date: Sun, 22 Nov 2026 10:29:53 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 69
+Connection: close
+Strict-Transport-Security: max-age=31536000
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: same-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+Cross-Origin-Opener-Policy: same-origin
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+{"detail":"La petición supera el tamaño máximo permitido (1 MB)."}
+
