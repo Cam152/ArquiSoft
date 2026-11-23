@@ -7,7 +7,8 @@ public sealed record Settings(
     string AmqpUrl,
     string Queue,
     ushort Prefetch,
-    TimeSpan RetryDelay)
+    TimeSpan RetryDelay,
+    string ChainKey)
 {
     public static Settings FromEnvironment() => new(
         MongoUri: Env("MONGO_URI", "mongodb://localhost:27017"),
@@ -16,7 +17,9 @@ public sealed record Settings(
         Queue: Env("AUDIT_QUEUE", "audit.vote-registered"),
         Prefetch: ushort.Parse(Env("AUDIT_PREFETCH", "10")),
         RetryDelay: TimeSpan.FromSeconds(double.Parse(Env("AUDIT_RETRY_DELAY_SECONDS", "2"),
-            System.Globalization.CultureInfo.InvariantCulture)));
+            System.Globalization.CultureInfo.InvariantCulture)),
+        // S5: llave del HMAC de la cadena de hashes. Solo la conoce agr-audit-lo.
+        ChainKey: Env("AUDIT_CHAIN_KEY", ""));
 
     private static string Env(string name, string fallback)
     {

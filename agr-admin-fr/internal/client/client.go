@@ -182,6 +182,33 @@ func (c *Client) Audit(ctx context.Context, electionID, limit int) ([]AuditEvent
 	return decodeEvents(raw)
 }
 
+// AuditProblem es un evento que no cuadra con la cadena de hashes (S5).
+type AuditProblem struct {
+	Kind    string  `json:"kind"`
+	Seq     *int64  `json:"seq"`
+	EventID *string `json:"event_id"`
+	Detail  string  `json:"detail"`
+}
+
+// AuditVerifyReport es la respuesta de GET /admin/audit/verify.
+type AuditVerifyReport struct {
+	Valid         bool           `json:"valid"`
+	TotalEvents   int64          `json:"total_events"`
+	ChainedEvents int64          `json:"chained_events"`
+	HeadSeq       int64          `json:"head_seq"`
+	HeadHash      *string        `json:"head_hash"`
+	KnownHeadSeq  *int64         `json:"known_head_seq"`
+	CheckedAt     string         `json:"checked_at"`
+	ProblemCount  int64          `json:"problem_count"`
+	Problems      []AuditProblem `json:"problems"`
+}
+
+// VerifyAudit pide al Audit Service que recorra la cadena de hashes.
+func (c *Client) VerifyAudit(ctx context.Context) (*AuditVerifyReport, error) {
+	var out AuditVerifyReport
+	return &out, c.do(ctx, http.MethodGet, "/admin/audit/verify", nil, nil, &out)
+}
+
 // decodeEvents acepta una lista, o un objeto con la lista en "events" o "items".
 func decodeEvents(raw json.RawMessage) ([]AuditEvent, error) {
 	var list []AuditEvent

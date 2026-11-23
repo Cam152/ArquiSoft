@@ -263,7 +263,10 @@ services:
   # LÓGICA - AUDIT SERVICE (responsable: Camilo)
   # ============================================================
   # Consume audit.vote-registered y guarda cada evento. El gateway lo consulta
-  # en GET /admin/audit.
+  # en GET /admin/audit y GET /admin/audit/verify.
+  # S5: cada evento se encadena con HMAC-SHA256 (seq, prev_hash, hash). La llave
+  # AUDIT_CHAIN_KEY solo la recibe este servicio: no está en agr-audit-db, así que
+  # quien entre a la base no puede rehacer la cadena para tapar un cambio.
   agr-audit-lo:
     container_name: agr-audit-lo
     build: ./agr-audit-lo
@@ -271,6 +274,7 @@ services:
       MONGO_URI: mongodb://${AUDIT_DB_USER:-audit}:${AUDIT_DB_PASSWORD:-audit}@agr-audit-db:27017/?authSource=admin
       MONGO_DB: ${AUDIT_MONGO_DB:-audit}
       AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/
+      AUDIT_CHAIN_KEY: ${AUDIT_CHAIN_KEY:-dev-audit-chain-key-change-me-0123456789}
     depends_on:
       agr-audit-db:
         condition: service_healthy

@@ -1,0 +1,12 @@
+AGORA - Prototipo 3 - S5 Auditoria a prueba de alteraciones - evidencia ANTES
+Fecha: 2026-11-22 19:43:55 -05:00   Rama: main
+==============================================================================
+
+Estado de la cadena antes de cualquier ataque.
+
+> curl http://localhost:8080/admin/audit/verify
+resultado: HTTP 404
+{"detail":"Recurso no encontrado"}
+
+JSON:
+(no aplica)

@@ -135,7 +135,8 @@ public sealed class VoteRegisteredConsumer : BackgroundService
                 await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, ct);
                 break;
             default:
-                _log.LogInformation("Evento {EventId} registrado", result.EventId);
+                // seq y hash quedan también en el log: una copia de la cabeza fuera de la base.
+                _log.LogInformation("Evento {EventId} registrado (seq {Seq}, hash {Hash})", result.EventId, result.Seq, result.Hash);
                 await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, ct);
                 break;
         }

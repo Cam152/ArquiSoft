@@ -443,6 +443,21 @@ describe("elecciones y administración", () => {
     assert.equal(res.status, 200);
     assert.deepEqual(audit.paths(), ["GET /audit/events?election_id=1&limit=5"]);
   });
+
+  test("S5: verificación de la auditoría con llave va a /audit/verify y devuelve el informe", async () => {
+    const report = { valid: false, problems: [{ kind: "altered", seq: 2, event_id: "e2", detail: "modificado" }] };
+    audit.handler = (_req, res) => json(res, 200, report);
+    const res = await fetch(`${base}/admin/audit/verify`, { headers: { "X-API-Key": "admin-key" } });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), report);
+    assert.deepEqual(audit.paths(), ["GET /audit/verify"]);
+  });
+
+  test("S5: verificación de la auditoría sin llave da 401 y no llega al servicio", async () => {
+    const res = await fetch(`${base}/admin/audit/verify`);
+    assert.equal(res.status, 401);
+    assert.equal(audit.calls.length, 0);
+  });
 });
 
 describe("Vote Service apagado", () => {

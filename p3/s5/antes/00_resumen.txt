@@ -1,0 +1,11 @@
+AGORA - Prototipo 3 - S5 Auditoria a prueba de alteraciones - evidencia ANTES
+Fecha: 2026-11-22 19:44:03 -05:00   Rama: main
+==============================================================================
+
+Prueba                                          Estado Detalle
+------------------------------------------------------------------------------
+01 eventos de prueba guardados                  OK     5 de 5
+02 existe verificacion de la cadena             INFO   GET /admin/audit/verify -> HTTP 404
+03 Ataque A: modificar un evento                INFO   GET /admin/audit lo lista sin aviso (HTTP 200); verificacion: HTTP 404
+
+Fallas: 0

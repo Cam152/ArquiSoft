@@ -1,8 +1,9 @@
 // agr-audit-lo: registro inmutable de lo que pasó en las votaciones (README, sección 4.10).
 //   - Consumers/    se suscribe a audit.vote-registered en agr-broker-as
-//   - Services/     reglas: validar el evento, redondear horas, descartar repetidos
+//   - Services/     reglas: validar el evento, redondear horas, descartar repetidos y
+//                   encadenar cada evento con HMAC-SHA256 (S5, tamper-evident log)
 //   - Repositories/ agr-audit-db (MongoDB)
-//   - Controllers/  GET /health, /audit/events y /audit/summary/{election_id}
+//   - Controllers/  GET /health, /audit/events, /audit/summary/{election_id} y /audit/verify
 
 using System.Text.Json;
 using Agora.Audit;
@@ -34,6 +35,7 @@ builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(settings.MongoUri));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IMongoClient>().GetDatabase(settings.MongoDatabase));
+builder.Services.AddSingleton(new HashChain(settings.ChainKey));
 builder.Services.AddSingleton<IAuditRepository, MongoAuditRepository>();
 builder.Services.AddSingleton<AuditService>();
 builder.Services.AddHostedService<VoteRegisteredConsumer>();
@@ -66,7 +68,7 @@ app.UseStatusCodePages(async ctx =>
 
 app.MapControllers();
 
-// Índices de MongoDB antes de recibir tráfico (event_id único). Espera a la base.
+// Índices de MongoDB antes de recibir tráfico (event_id y seq únicos). Espera a la base.
 var repository = app.Services.GetRequiredService<IAuditRepository>();
 for (var attempt = 1; ; attempt++)
 {
@@ -81,5 +83,14 @@ for (var attempt = 1; ; attempt++)
         await Task.Delay(TimeSpan.FromSeconds(2));
     }
 }
+
+// S5: encadena los eventos de antes de S5 (solo si la cadena está vacía) y carga la cabeza.
+var sealedLegacy = await app.Services.GetRequiredService<AuditService>().InitializeAsync(CancellationToken.None);
+if (sealedLegacy > 0)
+{
+    app.Logger.LogInformation("Se encadenaron {Count} eventos registrados antes de S5", sealedLegacy);
+}
+var head = app.Services.GetRequiredService<AuditService>().KnownHead;
+app.Logger.LogInformation("Cadena de auditoría: seq {Seq}, hash {Hash}", head?.Seq ?? 0, head?.Hash ?? HashChain.Genesis);
 
 app.Run();

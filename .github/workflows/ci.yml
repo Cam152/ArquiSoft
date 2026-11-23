@@ -230,6 +230,8 @@ jobs:
           curl --fail --silent --show-error --user agora:agora http://localhost:15672/api/exchanges/%2F/agora.votes
           # CLI de administración contra el gateway
           docker compose run --rm agr-admin-fr elections list
+          # S5: la cadena de hashes de la auditoría está intacta (código 1 si no)
+          docker compose run --rm agr-admin-fr audit verify
       - name: Logs (si algo falló)
         if: failure()
         run: docker compose logs --no-color --tail 100

@@ -13,7 +13,7 @@ public class AuditServiceTests
 
     public AuditServiceTests()
     {
-        _service = new AuditService(_repo, new FixedClock(Now));
+        _service = new AuditService(_repo, new FixedClock(Now), TestChain.Create());
     }
 
     private static ReadOnlyMemory<byte> Body(string eventId, long electionId, string occurredAt = "2026-11-03T14:25:09Z") =>
