@@ -1,0 +1,39 @@
+AGORA · Prototipo 3 · S4 · Protección del login contra fuerza bruta
+Fecha: 2026-11-23 15:13:39 -0500 · Entrada: https://localhost/api/auth/login
+==============================================================================
+
+A. Bloqueo de cuenta en agr-auth-lo (documento 1001)
+1   Clave incorrecta, intento 1                                esperado 401 · obtenido 401  OK
+    {"detail":"Documento o clave incorrectos"}
+2   Clave incorrecta, intento 2                                esperado 401 · obtenido 401  OK
+    {"detail":"Documento o clave incorrectos"}
+3   Clave incorrecta, intento 3                                esperado 401 · obtenido 401  OK
+    {"detail":"Documento o clave incorrectos"}
+4   Clave incorrecta, intento 4                                esperado 401 · obtenido 401  OK
+    {"detail":"Documento o clave incorrectos"}
+5   Clave incorrecta, intento 5: la cuenta se bloquea          esperado 423 · obtenido 423  OK
+    {"detail":"Cuenta bloqueada por cinco intentos fallidos. Intente nuevamente en 15 minutos."}
+6   Clave CORRECTA durante el bloqueo                          esperado 423 · obtenido 423  OK
+    {"detail":"Cuenta bloqueada temporalmente. Intente nuevamente mas tarde."}
+
+B. Límite por IP en agr-proxy-rp (5/min, ráfaga de 5)
+7   7.º intento seguido, otro documento (1002)                esperado 429 · obtenido 429  OK
+    {"detail":"Demasiados intentos de ingreso. Espera un minuto e intenta de nuevo."}
+8   8.º intento seguido, otro documento (1003)                esperado 429 · obtenido 429  OK
+    {"detail":"Demasiados intentos de ingreso. Espera un minuto e intenta de nuevo."}
+
+C. Estado guardado en agr-auth-db
+ document | failed_attempts |        locked_until        
+----------+-----------------+----------------------------
+ 1001     |               5 | 2026-11-23 20:28:39.665993
+ 1002     |               0 | 
+ 1003     |               0 | 
+(3 rows)
+
+D. Peticiones rechazadas por el proxy (registro de agr-proxy-rp, último minuto)
+    respuestas 429 en /api/auth/login: 2
+
+Restaurar: se desbloquea la cuenta 1001 para seguir usándola
+==============================================================================
+S4: todas las pruebas pasan
+(Si B falla con 401, ya pasó más de un minuto desde A o hubo pocos intentos; vuelva a correr el script.)
