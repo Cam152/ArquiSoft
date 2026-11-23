@@ -1,0 +1,119 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:30:28 -05:00   Entrada: https://localhost
+==============================================================================
+
+> docker compose up -d --no-recreate --wait --scale agr-gateway-or=3
+ Container agr-auth-db Running 
+ Container agr-elections-db Running 
+ Container agr-voters-db Running 
+ Container agr-proxy-rp Running 
+ Container agr-auth-lo Running 
+ Container agr-results-lo Running 
+ Container agr-audit-lo Running 
+ Container agr-votes-db Running 
+ Container agr-vote-lo Running 
+ Container agr-election-lo Running 
+ Container agr-results-db Running 
+ Container agr-audit-db Running 
+ Container agr-voter-lo Running 
+ Container agr-broker-as Running 
+ Container arquisoft-agr-gateway-or-1 Running 
+ Container agr-web-fr Running 
+ Container arquisoft-agr-gateway-or-3 Creating 
+ Container arquisoft-agr-gateway-or-2 Creating 
+ Container arquisoft-agr-gateway-or-2 Created 
+ Container arquisoft-agr-gateway-or-3 Created 
+ Container agr-auth-db Waiting 
+ Container agr-results-db Waiting 
+ Container agr-broker-as Waiting 
+ Container agr-voters-db Waiting 
+ Container agr-elections-db Waiting 
+ Container agr-audit-db Waiting 
+ Container agr-broker-as Waiting 
+ Container agr-broker-as Waiting 
+ Container agr-votes-db Waiting 
+ Container agr-auth-db Healthy 
+ Container agr-broker-as Healthy 
+ Container agr-elections-db Healthy 
+ Container agr-votes-db Healthy 
+ Container agr-broker-as Healthy 
+ Container agr-voters-db Healthy 
+ Container agr-audit-db Healthy 
+ Container agr-results-db Healthy 
+ Container agr-broker-as Healthy 
+ Container agr-voter-lo Waiting 
+ Container agr-results-lo Waiting 
+ Container agr-audit-lo Waiting 
+ Container agr-election-lo Waiting 
+ Container agr-auth-lo Waiting 
+ Container agr-vote-lo Waiting 
+ Container agr-audit-lo Healthy 
+ Container agr-vote-lo Healthy 
+ Container agr-results-lo Healthy 
+ Container agr-voter-lo Healthy 
+ Container agr-election-lo Healthy 
+ Container agr-auth-lo Healthy 
+ Container arquisoft-agr-gateway-or-2 Starting 
+ Container arquisoft-agr-gateway-or-2 Started 
+ Container arquisoft-agr-gateway-or-3 Starting 
+ Container arquisoft-agr-gateway-or-3 Started 
+ Container arquisoft-agr-gateway-or-2 Waiting 
+ Container arquisoft-agr-gateway-or-3 Waiting 
+ Container arquisoft-agr-gateway-or-1 Waiting 
+ Container arquisoft-agr-gateway-or-2 Healthy 
+ Container arquisoft-agr-gateway-or-3 Healthy 
+ Container arquisoft-agr-gateway-or-1 Healthy 
+ Container agr-web-fr Waiting 
+ Container arquisoft-agr-gateway-or-2 Waiting 
+ Container arquisoft-agr-gateway-or-3 Waiting 
+ Container arquisoft-agr-gateway-or-1 Waiting 
+ Container agr-web-fr Healthy 
+ Container arquisoft-agr-gateway-or-2 Healthy 
+ Container arquisoft-agr-gateway-or-3 Healthy 
+ Container arquisoft-agr-gateway-or-1 Healthy 
+ Container agr-votes-db Waiting 
+ Container agr-voters-db Waiting 
+ Container agr-election-lo Waiting 
+ Container arquisoft-agr-gateway-or-2 Waiting 
+ Container arquisoft-agr-gateway-or-3 Waiting 
+ Container arquisoft-agr-gateway-or-1 Waiting 
+ Container agr-results-lo Waiting 
+ Container agr-elections-db Waiting 
+ Container agr-broker-as Waiting 
+ Container agr-audit-lo Waiting 
+ Container agr-vote-lo Waiting 
+ Container agr-web-fr Waiting 
+ Container agr-voter-lo Waiting 
+ Container agr-proxy-rp Waiting 
+ Container agr-auth-lo Waiting 
+ Container agr-auth-db Waiting 
+ Container agr-results-db Waiting 
+ Container agr-audit-db Waiting 
+ Container agr-results-db Healthy 
+ Container agr-auth-db Healthy 
+ Container agr-voter-lo Healthy 
+ Container agr-audit-db Healthy 
+ Container agr-proxy-rp Healthy 
+ Container agr-broker-as Healthy 
+ Container agr-election-lo Healthy 
+ Container agr-audit-lo Healthy 
+ Container agr-web-fr Healthy 
+ Container agr-votes-db Healthy 
+ Container agr-voters-db Healthy 
+ Container agr-elections-db Healthy 
+ Container agr-vote-lo Healthy 
+ Container agr-auth-lo Healthy 
+ Container agr-results-lo Healthy 
+ Container arquisoft-agr-gateway-or-2 Healthy 
+ Container arquisoft-agr-gateway-or-3 Healthy 
+ Container arquisoft-agr-gateway-or-1 Healthy 
+
+Replicas:
+arquisoft-agr-gateway-or-2  Up 28 seconds (healthy)
+arquisoft-agr-gateway-or-3  Up 27 seconds (healthy)
+arquisoft-agr-gateway-or-1  Up 11 minutes (healthy)
+
+Peticiones por HTTPS repartidas (columna up= del log del proxy):
+  10  172.20.0.2:8080
+  10  172.20.0.5:8080
+  10  172.20.0.6:8080

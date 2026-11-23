@@ -1,0 +1,20 @@
+AGORA - Prototipo 3 - S5 Auditoria a prueba de alteraciones - evidencia DESPUES
+Fecha: 2026-11-22 20:03:21 -05:00   Rama: p3-camilo
+==============================================================================
+
+Prueba                                          Estado Detalle
+------------------------------------------------------------------------------
+01 eventos de prueba guardados                  OK     5 de 5
+02 cadena intacta antes de atacar               OK     valid=True, eventos=11
+03 Ataque A: modificar un evento                OK     senalado: altered seq 9 (El hash no coincide con el contenido: el evento fue modificado)
+03b cadena intacta al restaurar                 OK     
+04 Ataque B: modificar y recalcular el hash     OK     senalado: altered seq 9 (El hash no coincide con el contenido: el evento fue modificado)
+04b cadena intacta al restaurar                 OK     
+05 Ataque C: borrar un evento                   OK     senalado: missing seq 9 (Falta el evento seq 9: fue borrado)
+05b cadena intacta al restaurar                 OK     
+06 Ataque D: insertar un evento falso           OK     senalado: unchained s5-9575dfa9-falso
+06b cadena intacta al restaurar                 OK     
+07 Ataque E: borrar el ultimo evento            OK     senalado: truncated seq 11 (La cadena termina en seq 10, pero el servicio registró hasta seq 11: se borraron los últimos eventos)
+07b cadena intacta al restaurar                 OK     
+
+Fallas: 0

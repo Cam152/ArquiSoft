@@ -11,7 +11,8 @@
 #   agr-<x>-data-net     un servicio + su base    (ningún servicio ve una base ajena)
 #   agr-bus-net          broker + vote/results/audit (solo quien usa mensajería)
 #   agr-mgmt-net         consola de RabbitMQ
-# Solo se publican 80 (proxy; S1 agrega 443) y 127.0.0.1:15672 (consola). La web
+# Solo se publican 443 (proxy, TLS de S1), 80 (proxy, solo
+# redirige a HTTPS) y 127.0.0.1:15672 (consola). La web
 # (3000) y el gateway (8080) ya no se publican. Para depurar un servicio o una
 # base, usen un docker-compose.override.yml local.
 
@@ -262,7 +263,10 @@ services:
   # LÓGICA - AUDIT SERVICE (responsable: Camilo)
   # ============================================================
   # Consume audit.vote-registered y guarda cada evento. El gateway lo consulta
-  # en GET /admin/audit.
+  # en GET /admin/audit y GET /admin/audit/verify.
+  # S5: cada evento se encadena con HMAC-SHA256 (seq, prev_hash, hash). La llave
+  # AUDIT_CHAIN_KEY solo la recibe este servicio: no está en agr-audit-db, así que
+  # quien entre a la base no puede rehacer la cadena para tapar un cambio.
   agr-audit-lo:
     container_name: agr-audit-lo
     build: ./agr-audit-lo
@@ -270,6 +274,7 @@ services:
       MONGO_URI: mongodb://${AUDIT_DB_USER:-audit}:${AUDIT_DB_PASSWORD:-audit}@agr-audit-db:27017/?authSource=admin
       MONGO_DB: ${AUDIT_MONGO_DB:-audit}
       AMQP_URL: amqp://${BROKER_USER:-agora}:${BROKER_PASSWORD:-agora}@agr-broker-as:5672/
+      AUDIT_CHAIN_KEY: ${AUDIT_CHAIN_KEY:-dev-audit-chain-key-change-me-0123456789}
     depends_on:
       agr-audit-db:
         condition: service_healthy
@@ -419,7 +424,12 @@ services:
     ports:
       # PROXY_HTTP_PORT solo por si el 80 está ocupado en algún equipo (IIS, Skype...).
       - "${PROXY_HTTP_PORT:-80}:80"
-      # S1 · Secure Channel (Miguel): agregar "443:443" y montar los certificados.
+      # S1 · Secure Channel (Miguel): TLS en el 443; el 80 solo redirige a HTTPS.
+      - "443:443"
+    # Certificado y llave de desarrollo (los crea p3/s1/gen-certs.sh; no se versionan).
+    # Solo lectura y fuera de la imagen: el Dockerfile no los copia.
+    volumes:
+      - ./p3/s1/certs:/etc/nginx/certs:ro
     depends_on:
       agr-web-fr:
         condition: service_healthy

@@ -334,6 +334,11 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/go,python,visualstudiocode,linux,windows,java,react,nextjs
 
 
+# S1 - Secure Channel: certificado y llave de desarrollo (los genera p3/s1/gen-certs.sh)
+p3/s1/certs/
+*.key
+*.crt
+
 #Documents whose submission is not mandatory
 p2_1b.pdf
 \[SwArch_2026ii\] - Laboratory 6.pdf

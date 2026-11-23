@@ -1,0 +1,186 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:29:40 -05:00   Entrada: https://localhost
+==============================================================================
+
+> curl.exe -v -k https://localhost/api/health
+* Host localhost:443 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+*   Trying [::1]:443...
+* schannel: disabled automatic use of client certificate
+* ALPN: curl offers http/1.1
+* ALPN: server accepted http/1.1
+* Established connection to localhost (::1 port 443) from ::1 port 16789 
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+System.Management.Automation.RemoteException
+  0      0   0      0   0      0      0      0                              0* using HTTP/1.x
+> GET /api/health HTTP/1.1
+System.Management.Automation.RemoteException
+> Host: localhost
+System.Management.Automation.RemoteException
+> User-Agent: curl/8.22.0
+System.Management.Automation.RemoteException
+> Accept: */*
+System.Management.Automation.RemoteException
+> 
+System.Management.Automation.RemoteException
+* Request completely sent off
+* schannel: remote party requests renegotiation
+* schannel: renegotiating SSL/TLS connection
+* schannel: SSL/TLS connection renegotiated
+* schannel: remote party requests renegotiation
+* schannel: renegotiating SSL/TLS connection
+* schannel: SSL/TLS connection renegotiated
+< HTTP/1.1 200 OK
+System.Management.Automation.RemoteException
+< Date: Sun, 22 Nov 2026 10:29:40 GMT
+System.Management.Automation.RemoteException
+< Content-Type: application/json; charset=utf-8
+System.Management.Automation.RemoteException
+< Content-Length: 15
+System.Management.Automation.RemoteException
+< Connection: keep-alive
+System.Management.Automation.RemoteException
+< Strict-Transport-Security: max-age=31536000
+System.Management.Automation.RemoteException
+< X-Content-Type-Options: nosniff
+System.Management.Automation.RemoteException
+< X-Frame-Options: DENY
+System.Management.Automation.RemoteException
+< Referrer-Policy: same-origin
+System.Management.Automation.RemoteException
+< Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+System.Management.Automation.RemoteException
+< Cross-Origin-Opener-Policy: same-origin
+System.Management.Automation.RemoteException
+< Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+System.Management.Automation.RemoteException
+< 
+System.Management.Automation.RemoteException
+{ [15 bytes data]
+System.Management.Automation.RemoteException
+100     15 100     15   0      0    344      0                              0
+100     15 100     15   0      0    343      0                              0
+100     15 100     15   0      0    342      0                              0
+* Connection #0 to host localhost:443 left intact
+
+> curl.exe -v -k --tlsv1.2 --tls-max 1.2
+* Host localhost:443 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+*   Trying [::1]:443...
+* schannel: disabled automatic use of client certificate
+* ALPN: curl offers http/1.1
+* ALPN: server accepted http/1.1
+* Established connection to localhost (::1 port 443) from ::1 port 16790 
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+System.Management.Automation.RemoteException
+  0      0   0      0   0      0      0      0                              0* using HTTP/1.x
+> GET /api/health HTTP/1.1
+System.Management.Automation.RemoteException
+> Host: localhost
+System.Management.Automation.RemoteException
+> User-Agent: curl/8.22.0
+System.Management.Automation.RemoteException
+> Accept: */*
+System.Management.Automation.RemoteException
+> 
+System.Management.Automation.RemoteException
+* Request completely sent off
+< HTTP/1.1 200 OK
+System.Management.Automation.RemoteException
+< Date: Sun, 22 Nov 2026 10:29:40 GMT
+System.Management.Automation.RemoteException
+< Content-Type: application/json; charset=utf-8
+System.Management.Automation.RemoteException
+< Content-Length: 15
+System.Management.Automation.RemoteException
+< Connection: keep-alive
+System.Management.Automation.RemoteException
+< Strict-Transport-Security: max-age=31536000
+System.Management.Automation.RemoteException
+< X-Content-Type-Options: nosniff
+System.Management.Automation.RemoteException
+< X-Frame-Options: DENY
+System.Management.Automation.RemoteException
+< Referrer-Policy: same-origin
+System.Management.Automation.RemoteException
+< Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+System.Management.Automation.RemoteException
+< Cross-Origin-Opener-Policy: same-origin
+System.Management.Automation.RemoteException
+< Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+System.Management.Automation.RemoteException
+< 
+System.Management.Automation.RemoteException
+{ [15 bytes data]
+System.Management.Automation.RemoteException
+100     15 100     15   0      0    404      0                              0
+100     15 100     15   0      0    403      0                              0
+100     15 100     15   0      0    400      0                              0
+* Connection #0 to host localhost:443 left intact
+
+> curl.exe -v -k --tlsv1.3
+* Host localhost:443 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+*   Trying [::1]:443...
+* schannel: disabled automatic use of client certificate
+* ALPN: curl offers http/1.1
+* ALPN: server accepted http/1.1
+* Established connection to localhost (::1 port 443) from ::1 port 16791 
+  % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+                                 Dload  Upload  Total   Spent   Left   Speed
+System.Management.Automation.RemoteException
+  0      0   0      0   0      0      0      0                              0* using HTTP/1.x
+> GET /api/health HTTP/1.1
+System.Management.Automation.RemoteException
+> Host: localhost
+System.Management.Automation.RemoteException
+> User-Agent: curl/8.22.0
+System.Management.Automation.RemoteException
+> Accept: */*
+System.Management.Automation.RemoteException
+> 
+System.Management.Automation.RemoteException
+* Request completely sent off
+* schannel: remote party requests renegotiation
+* schannel: renegotiating SSL/TLS connection
+* schannel: SSL/TLS connection renegotiated
+* schannel: remote party requests renegotiation
+* schannel: renegotiating SSL/TLS connection
+* schannel: SSL/TLS connection renegotiated
+< HTTP/1.1 200 OK
+System.Management.Automation.RemoteException
+< Date: Sun, 22 Nov 2026 10:29:40 GMT
+System.Management.Automation.RemoteException
+< Content-Type: application/json; charset=utf-8
+System.Management.Automation.RemoteException
+< Content-Length: 15
+System.Management.Automation.RemoteException
+< Connection: keep-alive
+System.Management.Automation.RemoteException
+< Strict-Transport-Security: max-age=31536000
+System.Management.Automation.RemoteException
+< X-Content-Type-Options: nosniff
+System.Management.Automation.RemoteException
+< X-Frame-Options: DENY
+System.Management.Automation.RemoteException
+< Referrer-Policy: same-origin
+System.Management.Automation.RemoteException
+< Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+System.Management.Automation.RemoteException
+< Cross-Origin-Opener-Policy: same-origin
+System.Management.Automation.RemoteException
+< Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+System.Management.Automation.RemoteException
+< 
+System.Management.Automation.RemoteException
+{ [15 bytes data]
+System.Management.Automation.RemoteException
+100     15 100     15   0      0    391      0                              0
+100     15 100     15   0      0    389      0                              0
+100     15 100     15   0      0    388      0                              0
+* Connection #0 to host localhost:443 left intact

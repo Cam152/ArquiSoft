@@ -1,0 +1,37 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:29:36 -05:00   Entrada: https://localhost
+==============================================================================
+
+> s_client -tls1_2 -> agr-proxy-rp:443
+Connecting to 172.27.0.2
+depth=0 C=CO, O=AGORA (desarrollo), CN=localhost
+verify error:num=18:self-signed certificate
+CONNECTION ESTABLISHED
+Protocol version: TLSv1.2
+Ciphersuite: ECDHE-RSA-AES256-GCM-SHA384
+Peer certificate: C=CO, O=AGORA (desarrollo), CN=localhost
+Hash used: SHA256
+Signature type: rsa_pss_rsae_sha256
+Verification error: self-signed certificate
+Supported Elliptic Curve Point Formats: uncompressed:ansiX962_compressed_prime:ansiX962_compressed_char2
+Peer Temp Key: X25519, 253 bits
+DONE
+
+> s_client -tls1_3 -> agr-proxy-rp:443
+Connecting to 172.27.0.2
+depth=0 C=CO, O=AGORA (desarrollo), CN=localhost
+verify error:num=18:self-signed certificate
+CONNECTION ESTABLISHED
+Protocol version: TLSv1.3
+Ciphersuite: TLS_AES_256_GCM_SHA384
+Peer certificate: C=CO, O=AGORA (desarrollo), CN=localhost
+Hash used: SHA256
+Signature type: rsa_pss_rsae_sha256
+Verification error: self-signed certificate
+Negotiated TLS1.3 group: X25519MLKEM768
+DONE
+
+> s_client -tls1_1 -> agr-proxy-rp:443
+Connecting to 172.27.0.2
+28CB3FB891770000:error:0A00042E:SSL routines:ssl3_read_bytes:tlsv1 alert protocol version:ssl/record/rec_layer_s3.c:918:SSL alert number 70
+

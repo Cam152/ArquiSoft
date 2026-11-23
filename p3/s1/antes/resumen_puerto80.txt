@@ -1,0 +1,14 @@
+AGORA - Prototipo 3 - S1 Secure Channel - captura de trafico (fase: antes, puerto: 80)
+Fecha: 2026-11-22 05:37:08 -05:00
+==============================================================================
+Peticion enviada: POST http://localhost/api/auth/login  (documento 1001)
+Respuesta: HTTP/1.1 200 OK
+Paquetes capturados en el puerto 80: 10
+
+Documento legible en la captura : SI
+Clave legible en la captura     : SI
+Token JWT legible en la captura : SI
+
+Lineas de la captura con las credenciales:
+  {"document":"1001","password":"123456"}
+  {"access_token":"eyJhbGciOiJIUzI1NiJ9.eyJ2b3Rlcl9pZCI6MSwiZG9jdW1lbnQiOiIxMDAxIiwibmFtZSI6IkFuYSBHYXJjaWEiLCJzdWIiOiIxMDAxIiwiaWF0IjoxNzk1MzQzODIyLCJleHAiOjE3OTUzNDc0MjJ9.wTY40V2ofvk9sD9bgxZaoC73StJKg06TeT7YIKGaPyc","token_type":"Bearer","expires_in":3600}

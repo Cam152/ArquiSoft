@@ -14,7 +14,7 @@ public class AuditControllerTests
 
     public AuditControllerTests()
     {
-        _service = new AuditService(_repo, new FixedClock(new DateTimeOffset(2026, 11, 3, 15, 30, 0, TimeSpan.Zero)));
+        _service = new AuditService(_repo, new FixedClock(new DateTimeOffset(2026, 11, 3, 15, 30, 0, TimeSpan.Zero)), TestChain.Create());
         _controller = new AuditController(_service);
     }
 
@@ -31,7 +31,11 @@ public class AuditControllerTests
         var ok = Assert.IsType<OkObjectResult>(await _controller.Events("4", "5", default));
         var list = Assert.IsAssignableFrom<IEnumerable<AuditEventDto>>(ok.Value).ToList();
         var e = Assert.Single(list);
-        Assert.Equal(new AuditEventDto("e1", "VoteRegistered", 4, "2026-11-03T14:00:00Z", "2026-11-03T15:00:00Z"), e);
+        Assert.Equal(new AuditEventDto("e1", "VoteRegistered", 4, "2026-11-03T14:00:00Z", "2026-11-03T15:00:00Z"),
+            e with { Seq = null, PrevHash = null, Hash = null });
+        Assert.Equal(1, e.Seq);
+        Assert.Equal(new string('0', 64), e.PrevHash);
+        Assert.Matches("^[0-9a-f]{64}$", e.Hash);
     }
 
     [Fact]
@@ -68,6 +72,25 @@ public class AuditControllerTests
 
         var ok = Assert.IsType<OkObjectResult>(await _controller.Summary("2", default));
         Assert.Equal(new SummaryDto(2, 2), ok.Value);
+    }
+
+    [Fact]
+    public async Task VerifyDevuelveElInformeDeLaCadena()
+    {
+        await Seed("a", 1);
+        await Seed("b", 1);
+        _repo.Events[0].ElectionId = 9;
+
+        var ok = Assert.IsType<OkObjectResult>(await _controller.Verify(default));
+        var report = Assert.IsType<VerifyReportDto>(ok.Value);
+        Assert.False(report.Valid);
+        Assert.Equal(2, report.TotalEvents);
+        Assert.Equal(2, report.HeadSeq);
+        Assert.Equal("2026-11-03T15:30:00Z", report.CheckedAt);
+        var problem = Assert.Single(report.Problems);
+        Assert.Equal("altered", problem.Kind);
+        Assert.Equal(1, problem.Seq);
+        Assert.Equal("a", problem.EventId);
     }
 
     [Fact]

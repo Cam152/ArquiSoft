@@ -261,6 +261,37 @@ func TestAuditList(t *testing.T) {
 	}
 }
 
+func TestAuditVerifyIntact(t *testing.T) {
+	g, url := newGateway(t, map[string]reply{"GET /admin/audit/verify": {200,
+		`{"valid": true, "total_events": 3, "chained_events": 3, "head_seq": 3, "head_hash": "abc", "problem_count": 0, "problems": []}`}})
+	r := run(t, url, "", "audit", "verify")
+	if r.code != 0 {
+		t.Fatalf("código %d: %s", r.code, r.stderr)
+	}
+	if req := g.only(); req.apiKey != "k" {
+		t.Fatalf("falta la llave: %+v", req)
+	}
+	if !strings.Contains(r.stdout, "intacta") || !strings.Contains(r.stdout, "abc") {
+		t.Fatalf("salida inesperada:\n%s", r.stdout)
+	}
+}
+
+func TestAuditVerifyTamperedFails(t *testing.T) {
+	_, url := newGateway(t, map[string]reply{"GET /admin/audit/verify": {200,
+		`{"valid": false, "total_events": 3, "chained_events": 3, "head_seq": 3, "problem_count": 2, "problems": [
+		  {"kind": "altered", "seq": 2, "event_id": "e2", "detail": "El hash no coincide"},
+		  {"kind": "missing", "seq": 5, "event_id": null, "detail": "Falta el evento seq 5"}]}`}})
+	r := run(t, url, "", "audit", "verify")
+	if r.code != 1 {
+		t.Fatalf("debía terminar con código 1: %+v", r)
+	}
+	for _, want := range []string{"ALTERADA", "modificado", "e2", "borrado", "Falta el evento seq 5"} {
+		if !strings.Contains(r.stdout, want) {
+			t.Fatalf("falta %q en la salida:\n%s", want, r.stdout)
+		}
+	}
+}
+
 func TestJSONOutput(t *testing.T) {
 	_, url := newGateway(t, map[string]reply{"GET /elections/4": {200, electionJSON}})
 	r := run(t, url, "", "--json", "elections", "show", "4")

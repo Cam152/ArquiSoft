@@ -1,0 +1,12 @@
+AGORA - Prototipo 3 - S5 Auditoria a prueba de alteraciones - evidencia DESPUES
+Fecha: 2026-11-22 20:01:54 -05:00   Rama: p3-camilo
+==============================================================================
+
+Eventos publicados en audit.vote-registered (exchange por defecto, no pasan por agora.votes): 5/5
+Eventos guardados en agr-audit-db: 5
+
+{"event_id":"s5-9575dfa9-1","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T01:00:00Z"},"recorded_at":{"$date":"2026-11-23T01:00:00Z"},"seq":7,"prev_hash":"b6f57c2747e6bda3f035eae52591ff033cf0452e243f99d64e63078eab22b3e2","hash":"1905a78543823ef1cd4d2c325744bb5ed1166dce063da760285b8f9cb141c260"}
+{"event_id":"s5-9575dfa9-2","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T01:00:00Z"},"recorded_at":{"$date":"2026-11-23T01:00:00Z"},"seq":8,"prev_hash":"1905a78543823ef1cd4d2c325744bb5ed1166dce063da760285b8f9cb141c260","hash":"eb36b7d46c0a52cfa613bf57f93120d1f59b1f6681368af52799adbfe8e82cb2"}
+{"event_id":"s5-9575dfa9-3","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T01:00:00Z"},"recorded_at":{"$date":"2026-11-23T01:00:00Z"},"seq":9,"prev_hash":"eb36b7d46c0a52cfa613bf57f93120d1f59b1f6681368af52799adbfe8e82cb2","hash":"f888d12308ba26a4e5500f660657225c92864d801ef70dc22a61c922308caa69"}
+{"event_id":"s5-9575dfa9-4","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T01:00:00Z"},"recorded_at":{"$date":"2026-11-23T01:00:00Z"},"seq":10,"prev_hash":"f888d12308ba26a4e5500f660657225c92864d801ef70dc22a61c922308caa69","hash":"ff5c8c112d73bfca5c5e4291378e8e038563c14be98f8fb244c938448034d663"}
+{"event_id":"s5-9575dfa9-5","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T01:00:00Z"},"recorded_at":{"$date":"2026-11-23T01:00:00Z"},"seq":11,"prev_hash":"ff5c8c112d73bfca5c5e4291378e8e038563c14be98f8fb244c938448034d663","hash":"59a0df5d7e98663a4faa3f7c8c57e015b7dd02e2f3615585b36ebaee97ca9c10"}

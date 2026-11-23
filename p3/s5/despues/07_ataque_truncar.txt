@@ -1,0 +1,63 @@
+AGORA - Prototipo 3 - S5 Auditoria a prueba de alteraciones - evidencia DESPUES
+Fecha: 2026-11-22 20:03:21 -05:00   Rama: p3-camilo
+==============================================================================
+
+Ataque E: borrar el ultimo evento
+Se borra el evento mas reciente: no queda ningun hueco en la cadena, pero el servicio conoce la cabeza.
+
+--- Documento original en agr-audit-db
+{"_id":"s5-9575dfa9-5","event_id":"s5-9575dfa9-5","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T01:00:00Z"},"recorded_at":{"$date":"2026-11-23T01:00:00Z"},"seq":11,"prev_hash":"ff5c8c112d73bfca5c5e4291378e8e038563c14be98f8fb244c938448034d663","hash":"59a0df5d7e98663a4faa3f7c8c57e015b7dd02e2f3615585b36ebaee97ca9c10"}
+
+--- Ataque (mongosh dentro de agr-audit-db, con el usuario de la base)
+printjson(db.events.deleteOne({_id: "s5-9575dfa9-5"}));
+{   acknowledged: true,   deletedCount: 1 }
+
+--- Documento despues del ataque
+null
+
+--- Lo que ve el administrador al consultar la auditoria de la eleccion 999
+> agora audit list --election 999
+resultado: 0
+No hay eventos de auditoría.
+
+--- Verificacion despues del ataque
+> agora audit verify
+resultado: 1
+Eventos: 10 (encadenados: 10)
+Último seq: 10
+Último hash: ff5c8c112d73bfca5c5e4291378e8e038563c14be98f8fb244c938448034d663
+Verificado: 2026-11-23T01:03:15Z
+Resultado: ALTERADA, 1 problema(s):
+SEQ  TIPO               EVENTO  DETALLE
+11   borrados al final  -       La cadena termina en seq 10, pero el servicio registró hasta seq 11: se borraron los últimos eventos
+Error: la auditoría fue alterada: hay eventos modificados, borrados o insertados fuera del servicio
+
+JSON:
+{
+  "valid": false,
+  "total_events": 10,
+  "chained_events": 10,
+  "head_seq": 10,
+  "head_hash": "ff5c8c112d73bfca5c5e4291378e8e038563c14be98f8fb244c938448034d663",
+  "known_head_seq": 11,
+  "checked_at": "2026-11-23T01:03:13Z",
+  "problem_count": 1,
+  "problems": [
+    {
+      "kind": "truncated",
+      "seq": 11,
+      "event_id": null,
+      "detail": "La cadena termina en seq 10, pero el servicio registró hasta seq 11: se borraron los últimos eventos"
+    }
+  ]
+}
+
+--- Se restaura el documento original y se verifica otra vez
+> agora audit verify
+resultado: 0
+Eventos: 11 (encadenados: 11)
+Último seq: 11
+Último hash: 59a0df5d7e98663a4faa3f7c8c57e015b7dd02e2f3615585b36ebaee97ca9c10
+Verificado: 2026-11-23T01:03:20Z
+Resultado: OK, la cadena de auditoría está intacta.
+

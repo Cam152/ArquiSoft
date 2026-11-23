@@ -1,0 +1,28 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:29:43 -05:00   Entrada: https://localhost
+==============================================================================
+
+> docker ps --filter name=agr- --format '{{.Names}} {{.Ports}}'
+
+  agr-proxy-rp                     0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+  arquisoft-agr-gateway-or-1       8080/tcp
+  agr-election-lo                  8000/tcp
+  agr-web-fr                       3000/tcp
+  agr-audit-lo                     8005/tcp
+  agr-vote-lo                      8002/tcp
+  agr-results-lo                   8004/tcp
+  agr-auth-lo                      8081/tcp
+  agr-voter-lo                     8001/tcp
+  agr-audit-db                     27017/tcp
+  agr-votes-db                     27017/tcp
+  agr-results-db                   6379/tcp
+  agr-broker-as                    127.0.0.1:15672->15672/tcp
+  agr-auth-db                      5432/tcp
+  agr-voters-db                    5432/tcp
+  agr-elections-db                 5432/tcp
+
+Conexion TCP a 127.0.0.1 desde el equipo anfitrion:
+  80     ABIERTO
+  443    ABIERTO
+  3000   cerrado
+  8080   ABIERTO

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -174,8 +175,78 @@ func (a *app) auditCmd() *cobra.Command {
 	}
 	list.Flags().IntVar(&electionID, "election", 0, "filtra por elección")
 	list.Flags().IntVar(&limit, "limit", 50, "máximo de eventos")
-	cmd.AddCommand(list)
+	cmd.AddCommand(list, a.auditVerifyCmd())
 	return cmd
+}
+
+// errAuditTampered hace que la CLI termine con código 1 si la cadena no cuadra.
+var errAuditTampered = errors.New("la auditoría fue alterada: hay eventos modificados, borrados o insertados fuera del servicio")
+
+var problemKinds = map[string]string{
+	"altered":      "modificado",
+	"missing":      "borrado",
+	"truncated":    "borrados al final",
+	"unchained":    "insertado a mano",
+	"broken_link":  "enlace roto",
+	"out_of_order": "fuera de orden",
+}
+
+// auditVerifyCmd: S5, comprueba la cadena de hashes de la auditoría.
+func (a *app) auditVerifyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "verify",
+		Short: "Comprueba que nadie cambió, borró ni insertó eventos de auditoría",
+		Long: `Pide al Audit Service que recorra la cadena de hashes (S5) y muestra qué
+eventos no cuadran. Termina con código 1 si la auditoría fue alterada.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			r, err := a.api.VerifyAudit(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if a.asJSON {
+				if err := a.printJSON(cmd, r); err != nil {
+					return err
+				}
+			} else {
+				out := cmd.OutOrStdout()
+				head := "-"
+				if r.HeadHash != nil {
+					head = *r.HeadHash
+				}
+				fmt.Fprintf(out, "Eventos: %d (encadenados: %d)\nÚltimo seq: %d\nÚltimo hash: %s\nVerificado: %s\n",
+					r.TotalEvents, r.ChainedEvents, r.HeadSeq, head, dash(r.CheckedAt))
+				if r.Valid {
+					fmt.Fprintln(out, "Resultado: OK, la cadena de auditoría está intacta.")
+				} else {
+					fmt.Fprintf(out, "Resultado: ALTERADA, %d problema(s):\n", r.ProblemCount)
+					w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+					fmt.Fprintln(w, "SEQ\tTIPO\tEVENTO\tDETALLE")
+					for _, p := range r.Problems {
+						seq, id := "-", "-"
+						if p.Seq != nil {
+							seq = fmt.Sprint(*p.Seq)
+						}
+						if p.EventID != nil {
+							id = *p.EventID
+						}
+						kind := p.Kind
+						if es, ok := problemKinds[p.Kind]; ok {
+							kind = es
+						}
+						fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", seq, kind, id, p.Detail)
+					}
+					if err := w.Flush(); err != nil {
+						return err
+					}
+				}
+			}
+			if !r.Valid {
+				return errAuditTampered
+			}
+			return nil
+		},
+	}
 }
 
 func dash(s string) string {

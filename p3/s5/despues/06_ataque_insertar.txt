@@ -1,0 +1,60 @@
+AGORA - Prototipo 3 - S5 Auditoria a prueba de alteraciones - evidencia DESPUES
+Fecha: 2026-11-22 20:03:04 -05:00   Rama: p3-camilo
+==============================================================================
+
+Ataque D: insertar un evento falso
+Se agrega un VoteRegistered directo en la base, sin pasar por el Audit Service.
+
+--- Ataque (mongosh dentro de agr-audit-db)
+printjson(db.events.insertOne({_id: "s5-9575dfa9-falso", event_id: "s5-9575dfa9-falso", type: "VoteRegistered", election_id: 1, occurred_at: new Date(), recorded_at: new Date()}));
+{   acknowledged: true,   insertedId: 's5-9575dfa9-falso' }
+
+--- Documento insertado
+{"_id":"s5-9575dfa9-falso","event_id":"s5-9575dfa9-falso","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T01:02:51.521Z"},"recorded_at":{"$date":"2026-11-23T01:02:51.521Z"}}
+
+--- Lo que ve el administrador al consultar la auditoria de la eleccion 999
+> agora audit list --election 999
+resultado: 0
+No hay eventos de auditoría.
+
+--- Verificacion despues del ataque
+> agora audit verify
+resultado: 1
+Eventos: 12 (encadenados: 11)
+Último seq: 11
+Último hash: 59a0df5d7e98663a4faa3f7c8c57e015b7dd02e2f3615585b36ebaee97ca9c10
+Verificado: 2026-11-23T01:02:58Z
+Resultado: ALTERADA, 1 problema(s):
+SEQ  TIPO              EVENTO             DETALLE
+-    insertado a mano  s5-9575dfa9-falso  Evento sin seq o sin hash: no lo registró el Audit Service
+Error: la auditoría fue alterada: hay eventos modificados, borrados o insertados fuera del servicio
+
+JSON:
+{
+  "valid": false,
+  "total_events": 12,
+  "chained_events": 11,
+  "head_seq": 11,
+  "head_hash": "59a0df5d7e98663a4faa3f7c8c57e015b7dd02e2f3615585b36ebaee97ca9c10",
+  "known_head_seq": 11,
+  "checked_at": "2026-11-23T01:02:56Z",
+  "problem_count": 1,
+  "problems": [
+    {
+      "kind": "unchained",
+      "seq": null,
+      "event_id": "s5-9575dfa9-falso",
+      "detail": "Evento sin seq o sin hash: no lo registró el Audit Service"
+    }
+  ]
+}
+
+--- Se borra el evento falso y se verifica otra vez
+> agora audit verify
+resultado: 0
+Eventos: 11 (encadenados: 11)
+Último seq: 11
+Último hash: 59a0df5d7e98663a4faa3f7c8c57e015b7dd02e2f3615585b36ebaee97ca9c10
+Verificado: 2026-11-23T01:03:03Z
+Resultado: OK, la cadena de auditoría está intacta.
+

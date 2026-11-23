@@ -1,0 +1,35 @@
+AGORA - Prototipo 3 - S5 Auditoria a prueba de alteraciones - evidencia ANTES
+Fecha: 2026-11-22 19:44:02 -05:00   Rama: main
+==============================================================================
+
+Ataque A: modificar un evento
+Se cambia election_id del evento en la base, sin tocar seq ni hash.
+
+--- Documento original en agr-audit-db
+{"_id":"s5-84062dec-3","event_id":"s5-84062dec-3","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T00:00:00Z"},"recorded_at":{"$date":"2026-11-23T00:00:00Z"}}
+
+--- Ataque (mongosh dentro de agr-audit-db, con el usuario de la base)
+printjson(db.events.updateOne({_id: "s5-84062dec-3"}, {$set: {election_id: 999}}));
+{   acknowledged: true,   insertedId: null,   matchedCount: 1,   modifiedCount: 1,   upsertedCount: 0 }
+
+--- Documento despues del ataque
+{"_id":"s5-84062dec-3","event_id":"s5-84062dec-3","type":"VoteRegistered","election_id":999,"occurred_at":{"$date":"2026-11-23T00:00:00Z"},"recorded_at":{"$date":"2026-11-23T00:00:00Z"}}
+
+--- Lo que ve el administrador al consultar la auditoria de la eleccion 999
+> curl http://localhost:8080/admin/audit?election_id=999
+resultado: HTTP 200
+[{"event_id":"s5-84062dec-3","type":"VoteRegistered","election_id":999,"occurred_at":"2026-11-23T00:00:00Z","recorded_at":"2026-11-23T00:00:00Z"}]
+
+--- Verificacion despues del ataque
+> curl http://localhost:8080/admin/audit/verify
+resultado: HTTP 404
+{"detail":"Recurso no encontrado"}
+
+JSON:
+(no aplica)
+
+--- Se restaura el documento original y se verifica otra vez
+> curl http://localhost:8080/admin/audit/verify
+resultado: HTTP 404
+{"detail":"Recurso no encontrado"}
+

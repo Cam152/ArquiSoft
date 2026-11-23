@@ -1,0 +1,8 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:29:28 -05:00   Entrada: https://localhost
+==============================================================================
+
+> docker compose exec agr-proxy-rp nginx -t
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+codigo de salida: 0

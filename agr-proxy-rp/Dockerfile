@@ -12,8 +12,10 @@ ENV LOGIN_RATE=5r/m \
 
 COPY nginx.conf /etc/nginx/nginx.conf.template
 
-EXPOSE 80
+# 80 solo redirige a HTTPS y 443 es TLS (S1). Los certificados NO se copian a la imagen:
+# se montan en /etc/nginx/certs desde p3/s1/certs (ver docker-compose.yml).
+EXPOSE 80 443
 
-# Al arrancar: reemplaza solo LOGIN_RATE y LOGIN_BURST, valida la configuración y
+# Al arrancar: comprueba que existan los certificados de S1, reemplaza solo LOGIN_RATE y LOGIN_BURST, valida la configuración y
 # deja Nginx en primer plano (así Docker ve sus logs y su estado).
-CMD ["/bin/sh", "-c", "envsubst '${LOGIN_RATE} ${LOGIN_BURST}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t -q && exec nginx -g 'daemon off;'"]
+CMD ["/bin/sh", "-c", "[ -f /etc/nginx/certs/localhost.crt ] && [ -f /etc/nginx/certs/localhost.key ] || { echo 'Faltan los certificados de S1: ejecute bash p3/s1/gen-certs.sh' >&2; exit 1; }; envsubst '${LOGIN_RATE} ${LOGIN_BURST}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -t -q && exec nginx -g 'daemon off;'"]

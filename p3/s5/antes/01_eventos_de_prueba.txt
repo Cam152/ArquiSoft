@@ -1,0 +1,12 @@
+AGORA - Prototipo 3 - S5 Auditoria a prueba de alteraciones - evidencia ANTES
+Fecha: 2026-11-22 19:43:55 -05:00   Rama: main
+==============================================================================
+
+Eventos publicados en audit.vote-registered (exchange por defecto, no pasan por agora.votes): 5/5
+Eventos guardados en agr-audit-db: 5
+
+{"event_id":"s5-84062dec-1","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T00:00:00Z"},"recorded_at":{"$date":"2026-11-23T00:00:00Z"}}
+{"event_id":"s5-84062dec-2","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T00:00:00Z"},"recorded_at":{"$date":"2026-11-23T00:00:00Z"}}
+{"event_id":"s5-84062dec-3","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T00:00:00Z"},"recorded_at":{"$date":"2026-11-23T00:00:00Z"}}
+{"event_id":"s5-84062dec-4","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T00:00:00Z"},"recorded_at":{"$date":"2026-11-23T00:00:00Z"}}
+{"event_id":"s5-84062dec-5","type":"VoteRegistered","election_id":1,"occurred_at":{"$date":"2026-11-23T00:00:00Z"},"recorded_at":{"$date":"2026-11-23T00:00:00Z"}}

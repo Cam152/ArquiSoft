@@ -189,6 +189,20 @@ export function buildRoutes(cfg: Config, log: (message: string) => void): Route[
         });
       },
     },
+    {
+      // S5: verificación de la cadena de hashes de la auditoría.
+      method: "GET",
+      pattern: /^\/admin\/audit\/verify$/,
+      handler: async ({ req, res }) => {
+        requireAdmin(req, cfg.adminApiKey);
+        await forward(res, {
+          service: "Audit Service",
+          url: `${cfg.auditUrl}/audit/verify`,
+          method: "GET",
+          timeoutMs,
+        });
+      },
+    },
   ];
 }
 

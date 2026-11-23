@@ -1,0 +1,27 @@
+AGORA - Prototipo 3 - S1 Secure Channel - evidencia DESPUES
+Fecha: 2026-11-22 05:29:52 -05:00   Entrada: https://localhost
+==============================================================================
+
+1. Login de 1004 por POST /api/auth/login: HTTP 200, token recibido (recortado: eyJhbGciOiJI...) 
+2. Elecciones por POST /api/graphql: HTTP 200, eleccion abierta id=1 
+3. Voto por POST /api/votes: HTTP 409  {"detail":"Ya votaste en esta elección"} 
+4. SSE por GET /api/results/1/stream (corte a los 6 s: esperado):
+HTTP/1.1 200 OK
+Date: Sun, 22 Nov 2026 10:29:46 GMT
+Content-Type: text/event-stream; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Cache-Control: no-cache, no-transform
+Strict-Transport-Security: max-age=31536000
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: same-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+Cross-Origin-Opener-Policy: same-origin
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+event: counts
+data: {"election_id":1,"total_votes":1,"counts":{"1":1}}
+
+
+5. Resultados por GET /api/results/1: HTTP 200    {"election_id":1,"election_name":"Elección de representante estudiantil 2026","total_votes":1,"results":[{"candidate_id":1,"candidate_name":"Ana Torres","votes":1,"percentage":100},{"candidate_id":2,"candidate_name":"Luis Herrera","votes":0,"percentage":0},{"candidate_id":3,"candidate_name":"Camila Duarte","votes":0,"percentage":0}]} 
