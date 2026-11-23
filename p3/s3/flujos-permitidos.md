@@ -6,14 +6,16 @@ Esta matriz es el contrato de la red de AGORA: todo flujo que no aparece aquí d
 `docker-compose.yml` (sección REDES) y se comprueba con [`verify-segmentation.sh`](verify-segmentation.sh). Las URLs de
 cada flujo salen de `docker-compose.yml`, `agr-gateway-or/src/config.ts` y `agr-web-fr/lib/config.ts`.
 
-Las filas marcadas con **(S2)** entran cuando se integra el reverse proxy `agr-proxy-rp`.
+Las filas marcadas con **(S2)** llegaron con el reverse proxy `agr-proxy-rp`. La comprobación final está en
+[`matriz_proxy.txt`](matriz_proxy.txt): 0 caminos no autorizados, 18 flujos internos abiertos y 2 de 16 contenedores con
+salida a internet.
 
 ## 1. Zonas de red
 
 | Zona | Red | `internal` | Miembros |
 |---|---|---|---|
 | Pública **(S2)** | `agr-public-net` | no (publica 80 y 443) | `agr-proxy-rp` |
-| Borde | `agr-edge-net` | no; **sí** con S2, cuando la web y el gateway dejan de publicar puertos | `agr-web-fr`, `agr-gateway-or`, `agr-admin-fr` y, con S2, `agr-proxy-rp` |
+| Borde | `agr-edge-net` | **sí** (desde S2, la web y el gateway ya no publican puertos) | `agr-proxy-rp`, `agr-web-fr`, `agr-gateway-or`, `agr-admin-fr` |
 | Lógica | `agr-back-net` | sí | `agr-gateway-or`, `agr-auth-lo`, `agr-voter-lo`, `agr-election-lo`, `agr-vote-lo`, `agr-results-lo`, `agr-audit-lo` |
 | Datos | `agr-auth-data-net` | sí | `agr-auth-lo`, `agr-auth-db` |
 | Datos | `agr-elections-data-net` | sí | `agr-election-lo`, `agr-elections-db` |
@@ -95,9 +97,9 @@ Las filas marcadas con **(S2)** entran cuando se integra el reverse proxy `agr-p
 > **Puertos publicados (celda P de la matriz).** Un contenedor que está en una red no `internal` (en AGORA,
 > `agr-broker-as` por `agr-mgmt-net`) puede llegar por IP a un puerto que otro contenedor publica en el host, porque
 > el tráfico sale por el host y entra por la misma puerta que usa un cliente externo. No es un camino hacia una zona
-> protegida, así que se cuenta aparte. En Docker Desktop aparece como `agr-broker-as → agr-web-fr:3000` y
-> `→ agr-gateway-or:8080`; con S2 la web y el gateway dejan de publicar puertos y solo queda el proxy, que es la
-> entrada pública.
+> protegida, así que se cuenta aparte. Antes de S2 aparecía como `agr-broker-as → agr-web-fr:3000` y
+> `→ agr-gateway-or:8080`; con S2 la web y el gateway dejaron de publicar puertos y solo queda
+> `agr-broker-as → agr-proxy-rp:80`, que es la entrada pública.
 
 ## 5. Decisiones de diseño
 
@@ -106,5 +108,5 @@ Las filas marcadas con **(S2)** entran cuando se integra el reverse proxy `agr-p
 3. **`name:` explícito en cada red**, para que se llamen igual en cualquier máquina (`agr-edge-net` y no
    `arquisoft_agr-edge-net`) y la evidencia coincida.
 4. **La consola de RabbitMQ en una red propia** (`agr-mgmt-net`) y publicada solo en `127.0.0.1`.
-5. **Con S2, el proxy es el único contenedor con puertos públicos** y `agr-edge-net` pasa a `internal`, así la web y el
-   gateway pierden la salida a internet.
+5. **Con S2, el proxy es el único contenedor con puertos públicos** y `agr-edge-net` es `internal`, así la web y el
+   gateway no tienen salida a internet.

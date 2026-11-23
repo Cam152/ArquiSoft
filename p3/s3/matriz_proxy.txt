@@ -1,0 +1,54 @@
+Matriz de alcanzabilidad · AGORA (Prototipo 3)
+2026-11-23 14:53:27 -0500 · rama main (3e7723c) · Docker 29.2.1
+
+Redes de cada contenedor:
+  agr-proxy-rp      agr-edge-net agr-public-net 
+  agr-web-fr        agr-edge-net 
+  agr-gateway-or    agr-back-net agr-edge-net 
+  agr-auth-lo       agr-auth-data-net agr-back-net 
+  agr-voter-lo      agr-back-net agr-voters-data-net 
+  agr-election-lo   agr-back-net agr-elections-data-net 
+  agr-vote-lo       agr-back-net agr-bus-net agr-votes-data-net 
+  agr-results-lo    agr-back-net agr-bus-net agr-results-data-net 
+  agr-audit-lo      agr-audit-data-net agr-back-net agr-bus-net 
+  agr-auth-db       agr-auth-data-net 
+  agr-voters-db     agr-voters-data-net 
+  agr-elections-db  agr-elections-data-net 
+  agr-votes-db      agr-votes-data-net 
+  agr-results-db    agr-results-data-net 
+  agr-audit-db      agr-audit-data-net 
+  agr-broker-as     agr-bus-net agr-mgmt-net 
+
+Leyenda de celda: F#=flujo permitido abierto · R=inverso de flujo permitido · B8=servicio<->servicio (riesgo aceptado)
+                  P=solo por IP a un puerto ya publicado en el host (la misma entrada que usa un cliente externo)
+                  X=camino NO autorizado abierto (por nombre) · X*=abierto solo por IP · .=bloqueado · -=mismo contenedor
+
+origen \ destino  proxy   web     gw      auth    voter   elec    vote    res     audit   authDB  votrsDB elecDB  votesDB resDB   audDB   broker  internet
+agr-proxy-rp      -       F21     F22     .       .       .       .       .       .       .       .       .       .       .       .       .       SÍ
+agr-web-fr        R       -       F3      .       .       .       .       .       .       .       .       .       .       .       .       .       no
+agr-gateway-or    R       R       -       F5      F6      F7      F8      F9      F10     .       .       .       .       .       .       .       no
+agr-auth-lo       .       .       R       -       B8      B8      B8      B8      B8      F11     .       .       .       .       .       .       no
+agr-voter-lo      .       .       R       B8      -       B8      B8      B8      B8      .       F13     .       .       .       .       .       no
+agr-election-lo   .       .       R       B8      B8      -       B8      B8      B8      .       .       F12     .       .       .       .       no
+agr-vote-lo       .       .       R       B8      B8      B8      -       B8      B8      .       .       .       F14     .       .       F17     no
+agr-results-lo    .       .       R       B8      B8      B8      B8      -       B8      .       .       .       .       F15     .       F18     no
+agr-audit-lo      .       .       R       B8      B8      B8      B8      B8      -       .       .       .       .       .       F16     F19     no
+agr-auth-db       .       .       .       R       .       .       .       .       .       -       .       .       .       .       .       .       no
+agr-voters-db     .       .       .       .       R       .       .       .       .       .       -       .       .       .       .       .       no
+agr-elections-db  .       .       .       .       .       R       .       .       .       .       .       -       .       .       .       .       no
+agr-votes-db      .       .       .       .       .       .       R       .       .       .       .       .       -       .       .       .       no
+agr-results-db    .       .       .       .       .       .       .       R       .       .       .       .       .       -       .       .       no
+agr-audit-db      .       .       .       .       .       .       .       .       R       .       .       .       .       .       -       .       no
+agr-broker-as     P       .       .       .       .       .       R       R       R       .       .       .       .       .       .       -       SÍ
+
+Resumen
+  Flujos permitidos abiertos (F):            18
+  Inversos de flujos permitidos (R):         18
+  Servicio<->servicio en back-net (B8):      30
+  Solo por IP a un puerto publicado (P):     1
+  Caminos NO autorizados abiertos (X):       0
+  Pares bloqueados:                          173
+  Contenedores con salida a internet:        2 de 16
+
+Accesos a puertos publicados (P):
+  agr-broker-as -> agr-proxy-rp:80 (puerto publicado: 0.0.0.0:80)
